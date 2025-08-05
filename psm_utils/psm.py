@@ -1,8 +1,10 @@
+"""PSM module for handling peptide-spectrum matches."""
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from psm_utils.peptidoform import Peptidoform
 
@@ -10,29 +12,41 @@ from psm_utils.peptidoform import Peptidoform
 class PSM(BaseModel):
     """Data class representing a peptide-spectrum match (PSM)."""
 
-    peptidoform: Union[Peptidoform, str]  # type: ignore
+    peptidoform: Peptidoform
     spectrum_id: str
-    run: Optional[str] = None
-    collection: Optional[str] = None
-    spectrum: Optional[Any] = None
-    is_decoy: Optional[bool] = None
-    score: Optional[float] = None
-    qvalue: Optional[float] = None
-    pep: Optional[float] = None
-    precursor_mz: Optional[float] = None
-    retention_time: Optional[float] = None
-    ion_mobility: Optional[float] = None
-    protein_list: Optional[List[str]] = None
-    rank: Optional[int] = None
-    source: Optional[str] = None
-    provenance_data: Optional[Dict[str, str]] = dict()
-    metadata: Optional[Dict[str, str]] = dict()
-    rescoring_features: Optional[Dict[str, float]] = dict()
+    run: str | None = None
+    collection: str | None = None
+    spectrum: Any | None = None
+    is_decoy: bool | None = None
+    score: float | None = None
+    qvalue: float | None = None
+    pep: float | None = None
+    precursor_mz: float | None = None
+    retention_time: float | None = None
+    ion_mobility: float | None = None
+    protein_list: list[str] | None = None
+    rank: int | None = None
+    source: str | None = None
+    provenance_data: dict[str, str] | None = dict()
+    metadata: dict[str, str] | None = dict()
+    rescoring_features: dict[str, float] | None = dict()
+
     model_config = ConfigDict(arbitrary_types_allowed=True, coerce_numbers_to_str=True)
 
-    def __init__(self, **data):
+    @field_validator("peptidoform", mode="before")
+    @classmethod
+    def validate_peptidoform(cls, v: Peptidoform | str) -> Peptidoform:
+        """Convert string to Peptidoform if needed."""
+        if isinstance(v, str):
+            return Peptidoform(v)
+        elif isinstance(v, Peptidoform):
+            return v
+        else:
+            raise TypeError(f"Peptidoform or str expected for `peptidoform`, not `{type(v)}`.")
+
+    def __init__(self, **data: Any) -> None:  # noqa: D417
         """
-        Data class representing a peptide-spectrum match (PSM).
+        Initialize a peptide-spectrum match (PSM).
 
         Links a :class:`~psm_utils.peptidoform.Peptidoform` to an observed spectrum
         and holds the related information. Attribute types are coerced and enforced upon
@@ -87,18 +101,13 @@ class PSM(BaseModel):
 
         """
         super().__init__(**data)
-        # Parse peptidoform
-        if isinstance(self.peptidoform, str):
-            self.peptidoform: Peptidoform = Peptidoform(self.peptidoform)
-        elif not isinstance(self.peptidoform, Peptidoform):
-            raise TypeError(
-                f"Peptidoform or str expected for `peptidoform`, not `{type(self.peptidoform)}`."
-            )
 
     def __getitem__(self, item) -> Any:
+        """Get an attribute of the PSM."""
         return getattr(self, item)
 
     def __setitem__(self, item, value: Any) -> None:
+        """Set an attribute of the PSM."""
         setattr(self, item, value)
 
     @property

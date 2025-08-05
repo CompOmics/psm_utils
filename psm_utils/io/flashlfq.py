@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import csv
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -38,12 +39,16 @@ LOGGER = logging.getLogger(__name__)
 class FlashLFQReader(ReaderBase):
     """Reader for FlashLFQ TSV format."""
 
-    required_columns = ["Full Sequence", "Precursor Charge"]
+    required_columns: list[str] = ["Full Sequence", "Precursor Charge"]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
-        with open(self.filename, "rt") as open_file:
+        with open(self.filename) as open_file:
             reader = csv.DictReader(open_file, delimiter="\t")
+            if not reader.fieldnames:
+                raise PSMUtilsIOException(
+                    f"FlashLFQ TSV file '{self.filename}' is empty or has no valid header."
+                )
             if not all(col in reader.fieldnames for col in self.required_columns):
                 raise PSMUtilsIOException(
                     f"FlashLFQ TSV file must contain the following columns: {self.required_columns}"
@@ -51,7 +56,7 @@ class FlashLFQReader(ReaderBase):
             for i, row in enumerate(reader):
                 yield self._parse_entry(row, spectrum_id=str(i))
 
-    def _parse_entry(self, entry: dict, spectrum_id) -> PSM:
+    def _parse_entry(self, entry: dict[str, Any], spectrum_id: str) -> PSM:
         """Parse single FlashLFQ TSV entry to :py:class:`~psm_utils.psm.PSM`."""
         # Replace empty strings with None
         entry = {k: v if v else None for k, v in entry.items()}
@@ -66,7 +71,7 @@ class FlashLFQReader(ReaderBase):
         )
 
     @staticmethod
-    def _parse_protein_list(protein_accession: Optional[str]) -> list[str]:
+    def _parse_protein_list(protein_accession: str | None) -> list[str]:
         """Parse protein list string to list of protein accessions."""
         if not protein_accession:
             return []
@@ -81,14 +86,24 @@ class FlashLFQReader(ReaderBase):
 class FlashLFQWriter(WriterBase):
     """Reader for FlashLFQ TSV format."""
 
+    _default_fieldnames: list[str] = [
+        "File Name",
+        "Base Sequence",
+        "Full Sequence",
+        "Peptide Monoisotopic Mass",
+        "Scan Retention Time",
+        "Precursor Charge",
+        "Protein Accession",
+    ]
+
     def __init__(
         self,
-        filename: Union[str, Path],
-        *args,
+        filename: str | Path,
+        *args: Any,
         fdr_threshold: float = 0.01,
         only_targets: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Reader for psm_utils TSV format.
 
@@ -96,40 +111,37 @@ class FlashLFQWriter(WriterBase):
         ----------
         filename
             Path to PSM file.
+        *args
+            Additional positional arguments passed to the base class.
         fdr_threshold
             FDR threshold for filtering PSMs.
         only_targets
             If True, only target PSMs are written to file. If False, both target and decoy PSMs
             are written.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
 
-        self.fdr_threshold = fdr_threshold
-        self.only_targets = only_targets
+        self.fdr_threshold: float = fdr_threshold
+        self.only_targets: bool = only_targets
 
-        self._open_file = None
-        self._writer = None
-        self.fieldnames = None
+        self._open_file: Any = None
+        self._writer: Any = None
+        self.fieldnames: list[str] | None = None
 
     def __enter__(self) -> FlashLFQWriter:
+        """Open file for writing and return self."""
         if Path(self.filename).is_file():
             # Get fieldnames from existing file
-            with open(self.filename, "rt") as open_file:
+            with open(self.filename) as open_file:
                 # Get fieldnames
                 self.fieldnames = open_file.readline().strip().split("\t")
-            mode = "at"
+            mode: str = "at"
         else:
-            # Set default fieldnames
-            self.fieldnames = [
-                "File Name",
-                "Base Sequence",
-                "Full Sequence",
-                "Peptide Monoisotopic Mass",
-                "Scan Retention Time",
-                "Precursor Charge",
-                "Protein Accession",
-            ]
+            # Set default fieldnames; avoiding mutation of class variable
+            self.fieldnames = self._default_fieldnames[:]
             mode = "wt"
 
         # Open file and writer
@@ -146,12 +158,14 @@ class FlashLFQWriter(WriterBase):
 
         return self
 
-    def __exit__(self, *args, **kwargs) -> None:
-        self._open_file.close()
+    def __exit__(self, *args: Any, **kwargs: Any) -> None:
+        """Close file and writer."""
+        if self._open_file is not None:
+            self._open_file.close()
         self._open_file = None
         self._writer = None
 
-    def write_psm(self, psm: PSM):
+    def write_psm(self, psm: PSM) -> None:
         """
         Write a single PSM to new or existing PSM file.
 
@@ -168,14 +182,14 @@ class FlashLFQWriter(WriterBase):
 
         entry = self._psm_to_entry(psm)
         try:
-            self._writer.writerow(entry)
+            self._writer.writerow(entry)  # type: ignore[union-attr]
         except AttributeError as e:
             raise PSMUtilsIOException(
                 f"`write_psm` method can only be called if `{self.__class__.__qualname__}`"
                 "is opened in context (i.e., using the `with` statement)."
             ) from e
 
-    def write_file(self, psm_list: PSMList):
+    def write_file(self, psm_list: PSMList) -> None:
         """
         Write an entire PSMList to a new PSM file.
 
@@ -188,8 +202,8 @@ class FlashLFQWriter(WriterBase):
         # Filter out decoys
         if self.only_targets:
             # Accept both None and False
-            target_mask = np.array([not psm.is_decoy for psm in psm_list])
-            LOGGER.debug(f"Skipping {~target_mask.sum()} decoy PSMs for FlashLFQ file.")
+            target_mask = np.array([not psm.is_decoy for psm in psm_list], dtype=bool)
+            LOGGER.debug(f"Skipping {(~target_mask).sum()} decoy PSMs for FlashLFQ file.")
         else:
             target_mask = np.ones(len(psm_list), dtype=bool)
 
@@ -198,15 +212,18 @@ class FlashLFQWriter(WriterBase):
             LOGGER.warning(
                 "Not all PSMs have a q-value. Skipping FDR filtering for FlashLFQ file."
             )
-            fdr_mask = np.ones(len(psm_list), dtype=bool)
+            fdr_mask: np.ndarray[Any, np.dtype[np.bool_]] = np.ones(len(psm_list), dtype=bool)
         else:
             fdr_mask = psm_list["qvalue"] <= self.fdr_threshold
-        filtered_by_fdr = (~fdr_mask & target_mask).sum()
+        filtered_by_fdr: int = (~fdr_mask & target_mask).sum()
         LOGGER.debug(f"Skipping {filtered_by_fdr} PSMs above FDR threshold for FlashLFQ file.")
 
-        filtered_psm_list = psm_list[target_mask & fdr_mask]
+        filtered_psm_list: PSMList = psm_list[target_mask & fdr_mask]
 
-        with open(self.filename, "wt", newline="") as f:
+        with open(self.filename, "w", newline="") as f:
+            if not self.fieldnames:
+                # Set default fieldnames; avoiding mutation of class variable
+                self.fieldnames = self._default_fieldnames[:]
             writer = csv.DictWriter(
                 f, fieldnames=self.fieldnames, delimiter="\t", extrasaction="ignore"
             )
@@ -215,7 +232,7 @@ class FlashLFQWriter(WriterBase):
                 writer.writerow(self._psm_to_entry(psm))
 
     @staticmethod
-    def _psm_to_entry(psm: PSM) -> dict:
+    def _psm_to_entry(psm: PSM) -> dict[str, Any]:
         """Convert :py:class:`~psm_utils.psm.PSM` to FlashLFQ TSV entry."""
         return {
             "File Name": psm.run,

@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import csv
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Dict, Iterable, Union
 
 from psm_utils.io._base_classes import ReaderBase
+from psm_utils.io._utils import set_csv_field_size_limit
 from psm_utils.io.exceptions import PSMUtilsIOException
 from psm_utils.peptidoform import Peptidoform
 from psm_utils.psm import PSM
-from psm_utils.psm_list import PSMList
-from psm_utils.io._utils import set_csv_field_size_limit
 
 set_csv_field_size_limit()
 
@@ -36,6 +35,8 @@ REQUIRED_COLUMNS = [
 
 
 class IonbotReader(ReaderBase):
+    """Reader for ionbot PSM files."""
+
     def __init__(
         self,
         filename: str | Path,
@@ -47,12 +48,15 @@ class IonbotReader(ReaderBase):
 
         Parameters
         ----------
-        filename: str, pathlib.Path
+        filename
             Path to PSM file.
+        *args
+            Additional positional arguments passed to parent class.
+        **kwargs
+            Additional keyword arguments passed to parent class.
 
         Examples
         --------
-
         IonbotReader supports iteration:
 
         >>> from psm_utils.io.ionbot import IonbotReader
@@ -70,68 +74,115 @@ class IonbotReader(ReaderBase):
 
         """
         super().__init__(filename, *args, **kwargs)
-        self.filename = filename
 
-    def __iter__(self) -> Iterable[PSM]:
-        """Iterate over file and return PSMs one-by-one."""
-        with open(self.filename, "rt") as open_file:
+    def __iter__(self) -> Iterator[PSM]:
+        """
+        Iterate over file and return PSMs one-by-one.
+
+        Yields
+        ------
+        PSM
+            Individual PSM objects from the ionbot CSV file.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the specified file does not exist.
+        csv.Error
+            If there are issues reading the CSV file.
+        InvalidIonbotModificationError
+            If modification parsing fails.
+
+        """
+        with open(self.filename) as open_file:
             reader = csv.DictReader(open_file, delimiter=",")
             for row in reader:
                 yield self._get_peptide_spectrum_match(row)
 
-    def read_file(self) -> PSMList:
-        """Read full PSM file into a PSMList object."""
-        return PSMList(psm_list=[psm for psm in self])
-
-    def _get_peptide_spectrum_match(self, psm_dict: Dict[str, str | float]) -> PSM:
-        return PSM(
-            peptidoform=self._parse_peptidoform(
-                psm_dict["matched_peptide"],
-                psm_dict["modifications"],
-                psm_dict["charge"],
-            ),
-            spectrum_id=psm_dict["spectrum_title"],
-            run=psm_dict["spectrum_file"],
-            is_decoy=(
-                True
-                if psm_dict["database"] == "D"
-                else False if psm_dict["database"] == "T" else None
-            ),
-            score=float(psm_dict["psm_score"]),
-            precursor_mz=float(psm_dict["m/z"]),
-            retention_time=float(psm_dict["observed_retention_time"]),
-            protein_list=psm_dict["proteins"].split("||"),
-            source="ionbot",
-            qvalue=float(psm_dict["q-value"]),
-            pep=float(psm_dict["PEP"]),
-            provenance_data=({"ionbot_filename": str(self.filename)}),
-            metadata={
-                col: str(psm_dict[col]) for col in psm_dict.keys() if col not in REQUIRED_COLUMNS
-            },
-        )
+    def _get_peptide_spectrum_match(self, psm_dict: dict[str, str]) -> PSM:
+        """Convert a dictionary row from ionbot CSV to a PSM object."""
+        try:
+            return PSM(
+                peptidoform=self._parse_peptidoform(
+                    psm_dict["matched_peptide"],
+                    psm_dict["modifications"],
+                    psm_dict["charge"],
+                ),
+                spectrum_id=psm_dict["spectrum_title"],
+                run=psm_dict["spectrum_file"],
+                is_decoy=(
+                    True
+                    if psm_dict["database"] == "D"
+                    else False
+                    if psm_dict["database"] == "T"
+                    else None
+                ),
+                score=float(psm_dict["psm_score"]),
+                precursor_mz=float(psm_dict["m/z"]),
+                retention_time=float(psm_dict["observed_retention_time"]),
+                protein_list=psm_dict["proteins"].split("||"),
+                source="ionbot",
+                qvalue=float(psm_dict["q-value"]),
+                pep=float(psm_dict["PEP"]),
+                provenance_data={"ionbot_filename": str(self.filename)},
+                metadata={
+                    col: str(psm_dict[col])
+                    for col in psm_dict.keys()
+                    if col not in REQUIRED_COLUMNS
+                },
+            )
+        except KeyError as e:
+            raise PSMUtilsIOException(f"Missing required column in ionbot file: {e}") from e
+        except ValueError as e:
+            raise PSMUtilsIOException(f"Error parsing numeric value in ionbot file: {e}") from e
 
     @staticmethod
-    def _parse_peptidoform(
-        peptide: str, modifications: str, charge: Union[str, int]
-    ) -> Peptidoform:
+    def _parse_peptidoform(peptide: str, modifications: str, charge: str | int) -> Peptidoform:
         """Parse peptide, modifications, and charge to Peptidoform."""
         # Split peptide into list of amino acids with termini
-        peptide = peptide = [""] + list(peptide) + [""]
+        peptide_list: list[str] = [""] + list(peptide) + [""]
 
         # Add modifications
-        pattern = re.compile(r"^(?P<U>\[\S*?\])?(?P<mod>.*?)(?P<AA>\[\S*?\])?$")
-        for position, label in zip(modifications.split("|")[::2], modifications.split("|")[1::2]):
-            mod_match = pattern.search(label)
-            if mod_match.group("U"):
-                parsed_label = "U:" + mod_match.group("U")[1:-1]
-            else:
-                parsed_label = mod_match.group("mod")
-            peptide[int(position)] += f"[{parsed_label}]"
+        pattern: re.Pattern[str] = re.compile(r"^(?P<U>\[\S*?\])?(?P<mod>.*?)(?P<AA>\[\S*?\])?$")
+
+        if modifications:  # Handle empty modifications string
+            mod_parts = modifications.split("|")
+            if len(mod_parts) % 2 != 0:
+                raise InvalidIonbotModificationError(
+                    f"Invalid modification string format: '{modifications}'. "
+                    "Expected even number of parts (position|label pairs)."
+                )
+
+            for position_str, label in zip(mod_parts[::2], mod_parts[1::2]):
+                mod_match = pattern.search(label)
+                if not mod_match:
+                    raise InvalidIonbotModificationError(
+                        f"Invalid modification format '{label}' at position {position_str} in "
+                        f"'{modifications}'."
+                    )
+
+                try:
+                    position = int(position_str)
+                except ValueError as e:
+                    raise InvalidIonbotModificationError(
+                        f"Invalid position '{position_str}' in modifications '{modifications}'"
+                    ) from e
+
+                if position < 0 or position >= len(peptide_list):
+                    raise InvalidIonbotModificationError(
+                        f"Position {position} out of range for peptide '{peptide}' (length {len(peptide_list) - 2})"
+                    )
+
+                if mod_match.group("U"):
+                    parsed_label = "U:" + mod_match.group("U")[1:-1]
+                else:
+                    parsed_label = mod_match.group("mod")
+                peptide_list[position] += f"[{parsed_label}]"
 
         # Add terminal modifications
-        peptide[0] = peptide[0] + "-" if peptide[0] else ""
-        peptide[-1] = "-" + peptide[-1] if peptide[-1] else ""
-        proforma_seq = "".join(peptide)
+        peptide_list[0] = peptide_list[0] + "-" if peptide_list[0] else ""
+        peptide_list[-1] = "-" + peptide_list[-1] if peptide_list[-1] else ""
+        proforma_seq = "".join(peptide_list)
 
         # Add charge state
         proforma_seq += f"/{charge}"
@@ -140,6 +191,13 @@ class IonbotReader(ReaderBase):
 
 
 class InvalidIonbotModificationError(PSMUtilsIOException):
-    """Invalid Peptide Record modification."""
+    """
+    Exception raised when ionbot modification parsing fails.
+
+    This exception is raised when:
+    - Modification format is invalid
+    - Position values are out of range
+    - Modification string structure is malformed
+    """
 
     pass

@@ -1,12 +1,15 @@
+"""PSMList module for handling collections of PSMs."""
+
 from __future__ import annotations
 
 import re
-from typing import Iterator, List, Sequence, cast
+from collections.abc import Iterator, Sequence
+from typing import cast, overload
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
-from pyteomics import auxiliary, proforma
+from pyteomics import auxiliary, proforma  # type: ignore[import]
 from rich.pretty import pretty_repr
 
 from psm_utils.psm import NUMPY_DTYPES, PSM
@@ -15,11 +18,11 @@ from psm_utils.psm import NUMPY_DTYPES, PSM
 class PSMList(BaseModel):
     """Data class representing a list of PSMs."""
 
-    psm_list: List[PSM]
+    psm_list: list[PSM]
 
-    def __init__(__pydantic_self__, **data) -> None:
+    def __init__(__pydantic_self__, **data) -> None:  # type: ignore[override]  # noqa: D417
         """
-        Data class representing a list of PSMs, with some useful functionality.
+        Represent a list of PSMs in a data class with added functionality.
 
         Parameters
         ----------
@@ -72,25 +75,41 @@ class PSMList(BaseModel):
         super().__init__(**data)
 
     def __rich_repr__(self):
+        """Rich representation of the PSMList."""
         yield "psm_list", self.psm_list
 
     def __repr__(self):
+        """Return a pretty representation of the PSMList."""
         return pretty_repr(self, max_length=5)
 
     def __str__(self):
+        """Return a string representation of the PSMList."""
         return self.__repr__()
 
-    def __add__(self, other):
+    def __add__(self, other: PSMList) -> PSMList:
+        """Concatenate two PSMLists."""
         return PSMList(psm_list=self.psm_list + other.psm_list)
 
     def __iter__(self) -> Iterator[PSM]:  # type: ignore[override]
-        return self.psm_list.__iter__()
+        """Iterate over the PSMList."""
+        return iter(self.psm_list)
 
     def __len__(self) -> int:
-        return self.psm_list.__len__()
+        """Return the length of the PSMList."""
+        return len(self.psm_list)
+
+    @overload
+    def __getitem__(self, item: int | np.integer) -> PSM: ...
+
+    @overload
+    def __getitem__(self, item: slice | Sequence[bool | int] | np.ndarray) -> PSMList: ...
+
+    @overload
+    def __getitem__(self, item: str | Sequence[str]) -> np.ndarray: ...
 
     def __getitem__(self, item) -> PSM | PSMList | np.ndarray:
-        if isinstance(item, (int, np.integer)):
+        """Get PSM or PSMList by index, slice, or property name."""
+        if isinstance(item, int | np.integer):
             # Return single PSM by index
             return self.psm_list[item]
         elif isinstance(item, slice):
@@ -119,6 +138,13 @@ class PSMList(BaseModel):
             raise TypeError(f"Unsupported indexing type: {type(item)}")
 
     def __setitem__(self, item, values: Sequence) -> None:
+        """
+        Set PSM property values for all PSMs in :py:class:`PSMList`.
+
+        If the length of `values` does not match the length of the PSMList,
+        a ValueError is raised.
+
+        """
         if not len(values) == len(self):
             raise ValueError(f"Expected value with same length as PSMList: {len(self)}")
         for value, psm in zip(values, self):
@@ -270,7 +296,7 @@ class PSMList(BaseModel):
             requires renaming. Modification labels that are not in the mapping will not
             be renamed.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.rename_modifications
 
@@ -288,7 +314,7 @@ class PSMList(BaseModel):
         added in the "fixed modifications" notation, at the front of the ProForma
         sequence.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.add_fixed_modifications
 
@@ -319,7 +345,7 @@ class PSMList(BaseModel):
         Applies :py:meth:`psm_utils.peptidoform.Peptidoform.apply_fixed_modifications`
         on all PSM peptidoforms in the :py:class:`PSMList`.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.apply_fixed_modifications
 
@@ -337,18 +363,20 @@ class PSMList(BaseModel):
 
 
 def _is_iterable_of_bools(obj):
+    """Check if the object is an iterable of booleans."""
     try:
-        if all(isinstance(x, (bool, np.bool_)) for x in obj):
-            return True
-        else:
+        if any(not isinstance(x, bool | np.bool_) for x in obj):
             return False
+        else:
+            return True
     except (TypeError, ValueError):
         return False
 
 
 def _is_iterable_of_ints(obj):
+    """Check if the object is an iterable of integers."""
     try:
-        if not all(isinstance(x, (int, np.integer)) for x in obj):
+        if any(not isinstance(x, int | np.integer) for x in obj):
             return False
         else:
             return True
@@ -357,8 +385,9 @@ def _is_iterable_of_ints(obj):
 
 
 def _is_iterable_of_strings(obj):
+    """Check if the object is an iterable of strings."""
     try:
-        if not all(isinstance(x, str) for x in obj):
+        if any(not isinstance(x, str) for x in obj):
             return False
         else:
             return True
