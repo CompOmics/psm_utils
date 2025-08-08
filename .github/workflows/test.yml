@@ -32,7 +32,7 @@ jobs:
         run: pip install --editable .[dev,idxml]
 
       - name: Static type checking with mypy
-        run: mypy
+        run: mypy --non-interactive
 
       - name: Test with pytest and codecov
         run: |
