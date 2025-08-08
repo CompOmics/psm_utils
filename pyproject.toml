@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "isort>5", "pytest", "pytest-cov"]
+dev = ["ruff", "isort>5", "pytest", "pytest-cov", "mypy"]
 docs = [
     "numpydoc>=1,<2",
     "recommonmark",
