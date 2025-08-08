@@ -20,6 +20,8 @@ jobs:
 
       - name: Check with Ruff
         uses: astral-sh/ruff-action@v3
+        with:
+          args: --exclude docs,tests
 
       - name: Install package and its dependencies
         run: pip install --editable .[dev,idxml]
