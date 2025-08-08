@@ -247,14 +247,35 @@ class IdXMLReader(ReaderBase):
             "idxml:significance_threshold": str(peptide_id.getSignificanceThreshold()),
         }
         peptide_hit_metadata = {
-            key: peptide_hit.getMetaValue(key) for key in self.user_params_metadata
+            key: str(peptide_hit.getMetaValue(key))
+            if peptide_hit.getMetaValue(key) is not None
+            else ""
+            for key in self.user_params_metadata
         }
+
+        # Extract qvalue and pep if they exist
+        qvalue = None
+        if peptide_hit.metaValueExists(QVALUE_KEY):
+            try:
+                qvalue = float(peptide_hit.getMetaValue(QVALUE_KEY))
+            except (ValueError, TypeError):
+                pass
+
+        pep = None
+        if peptide_hit.metaValueExists(PEP_KEY):
+            try:
+                pep = float(peptide_hit.getMetaValue(PEP_KEY))
+            except (ValueError, TypeError):
+                pass
+
         return PSM(
             peptidoform=peptidoform,
             spectrum_id=peptide_id.getMetaValue(SPECTRUM_REFERENCE_KEY),
             run=self._get_run(protein_ids, peptide_id),
             is_decoy=self._is_decoy(peptide_hit),
             score=peptide_hit.getScore(),
+            qvalue=qvalue,
+            pep=pep,
             precursor_mz=peptide_id.getMZ(),
             retention_time=peptide_id.getRT(),
             ion_mobility=self._get_ion_mobility(peptide_hit),
@@ -347,12 +368,7 @@ class IdXMLReader(ReaderBase):
         peptide_hit.getKeys(keys)
 
         return [
-            key.decode()
-            for key in keys
-            if (
-                self._is_float(peptide_hit.getMetaValue(key.decode()))
-                and key.decode() in RESCORING_FEATURE_LIST
-            )
+            key.decode() for key in keys if self._is_float(peptide_hit.getMetaValue(key.decode()))
         ]
 
     @staticmethod
@@ -562,12 +578,11 @@ class IdXMLWriter(WriterBase):
         if psm.pep is not None:
             peptide_hit.setMetaValue(PEP_KEY, psm.pep)
 
-        # Add rescoring features (only those not in the standard list)
+        # Add rescoring features
         if psm.rescoring_features:
             for feature, value in psm.rescoring_features.items():
-                if feature not in RESCORING_FEATURE_LIST:
-                    # Convert numpy objects to floats as pyopenms does not support numpy objects
-                    peptide_hit.setMetaValue(feature, float(value))
+                # Convert numpy objects to floats as pyopenms does not support numpy objects
+                peptide_hit.setMetaValue(feature, float(value))
 
     def _create_new_ids(self, psm_dict: dict[str | None, dict[str, dict[str, list[PSM]]]]) -> None:
         """Create new ProteinIdentification and PeptideIdentification objects with new features."""
@@ -656,6 +671,8 @@ class IdXMLWriter(WriterBase):
         peptide_hit.setMetaValue(TARGET_DECOY_KEY, target_decoy_value)
 
         # Set optional values
+        if psm.score is not None:
+            peptide_hit.setScore(psm.score)
         if psm.qvalue is not None:
             peptide_hit.setMetaValue(QVALUE_KEY, psm.qvalue)
         if psm.pep is not None:
