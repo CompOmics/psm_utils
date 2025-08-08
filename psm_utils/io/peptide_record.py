@@ -188,8 +188,7 @@ class PeptideRecordReader(ReaderBase):
                 is_decoy = is_decoy_map[entry.label]
             except (ValueError, KeyError) as e:
                 raise InvalidPeprecError(
-                    f"Could not parse value for `label` {entry.label}. "
-                    "Should be `1` or `-1`."
+                    f"Could not parse value for `label` {entry.label}. Should be `1` or `-1`."
                 ) from e
         else:
             is_decoy = None

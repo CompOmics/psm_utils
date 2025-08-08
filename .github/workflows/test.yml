@@ -18,10 +18,15 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Check with Ruff
+      - name: Lint with Ruff
         uses: astral-sh/ruff-action@v3
         with:
-          args: --exclude docs,tests
+          args: format --check --diff --exclude docs,tests
+
+      - name: Check formatting with Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: --check exclude docs,tests
 
       - name: Install package and its dependencies
         run: pip install --editable .[dev,idxml]
