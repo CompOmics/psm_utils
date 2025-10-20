@@ -242,6 +242,8 @@ class PSMList(BaseModel):
             self,
             key="score",
             is_decoy="is_decoy",
+            formula=1,
+            correction=1,
             remove_decoy=False,
             reverse=reverse,
             full_output=True,
