@@ -21,7 +21,7 @@ from rich.progress import Progress
 
 from psm_utils import __version__
 from psm_utils.io._base_classes import ReaderBase, WriterBase
-from psm_utils.io.exceptions import PSMUtilsIOException
+from psm_utils.io.exceptions import PSMUtilsIOException, ModificationException
 from psm_utils.peptidoform import Peptidoform
 from psm_utils.psm import PSM
 from psm_utils.psm_list import PSMList
@@ -210,7 +210,15 @@ class MzidReader(ReaderBase):
 
         # Add modification labels
         for mod in modification_list:
-            peptide[int(mod["location"])] += f"[{mod['name']}]"
+            name = mod.get("name")
+            if name and name != "unknown modification":
+                tag = f"[{mod['name']}]"
+            elif "monoisotopicMassDelta" in mod:
+                s = mod["monoisotopicMassDelta"]
+                tag = f"[{s:+.5f}]"
+            else:
+                raise ModificationException(f"Not enough information about modification: {mod}")
+            peptide[int(mod["location"])] += tag
 
         # Add dashes between residues and termini, and join sequence
         peptide[0] = peptide[0] + "-" if peptide[0] else ""
