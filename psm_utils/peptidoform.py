@@ -8,6 +8,7 @@ from typing import Literal, TypedDict, cast
 
 import numpy as np
 from pyteomics import mass, proforma  # type: ignore[import]
+from pyteomics.proforma import ProForma, TagBase
 
 from psm_utils.exceptions import PSMUtilsException
 from psm_utils.utils import mass_to_mz
@@ -16,7 +17,7 @@ from psm_utils.utils import mass_to_mz
 class Peptidoform:
     """Peptide sequence, modifications and charge state represented in ProForma notation."""
 
-    def __init__(self, proforma_sequence: str | proforma.ProForma) -> None:
+    def __init__(self, proforma_sequence: str | ProForma) -> None:
         """
         Peptide sequence, modifications and charge state represented in ProForma notation.
 
@@ -42,18 +43,19 @@ class Peptidoform:
         711.2567622919099
 
         """
-        self.parsed_sequence: list[tuple[str, list[proforma.TagBase] | None]]
+        self.parsed_sequence: list[tuple[str, list[TagBase] | None]]
         self.properties: PeptidoformProperties
 
         # Parse ProForma
         if isinstance(proforma_sequence, str):
             try:
-                self.parsed_sequence, self.properties = proforma.parse(proforma_sequence)
+                self.parsed_sequence, properties = proforma.parse(proforma_sequence)
+                self.properties = cast(PeptidoformProperties, properties)
             except proforma.ProFormaError as e:
                 raise PeptidoformException(
                     f"Could not parse ProForma sequence: {proforma_sequence}"
                 ) from e
-        elif isinstance(proforma_sequence, proforma.ProForma):
+        elif isinstance(proforma_sequence, ProForma):
             self.parsed_sequence = proforma_sequence.sequence
             self.properties = proforma_sequence.properties
         else:
@@ -94,7 +96,7 @@ class Peptidoform:
         else:
             raise TypeError(f"Unsupported comparison type for Peptidoform: {type(__o)}")
 
-    def __iter__(self) -> Iterable[tuple[str, None | list[proforma.TagBase]]]:
+    def __iter__(self) -> Iterable[tuple[str, None | list[TagBase]]]:
         """Return an iterator over the parsed sequence."""
         return self.parsed_sequence.__iter__()
 
@@ -102,7 +104,7 @@ class Peptidoform:
         """Return the length of the parsed sequence."""
         return self.parsed_sequence.__len__()
 
-    def __getitem__(self, key: int) -> tuple[str, None | list[proforma.TagBase]]:
+    def __getitem__(self, key: int) -> tuple[str, None | list[TagBase]]:
         """Get the item at the specified index from the parsed sequence."""
         return self.parsed_sequence.__getitem__(key)
 
@@ -210,9 +212,10 @@ class Peptidoform:
         # Get compositions for fixed modifications by amino acid
         fixed_rules = {}
         for rule in self.properties["fixed_modifications"]:
-            if rule.targets is not None:
-                for aa in rule.targets:
-                    fixed_rules[aa] = rule.modification_tag.composition
+            if rule.targets is None:
+                continue
+            for aa in rule.targets:
+                fixed_rules[aa] = rule.modification_tag.composition
 
         comp_list = []
 
@@ -320,9 +323,10 @@ class Peptidoform:
         """
         fixed_rules = {}
         for rule in self.properties["fixed_modifications"]:
-            if rule.targets is not None:
-                for aa in rule.targets:
-                    fixed_rules[aa] = rule.modification_tag.mass
+            if rule.targets is None:
+                continue
+            for aa in rule.targets:
+                fixed_rules[aa] = rule.modification_tag.mass
 
         mass_list = []
 
@@ -453,8 +457,8 @@ class Peptidoform:
         """
 
         def _rename_modification_list(
-            mods: list[proforma.TagBase] | None,
-        ) -> list[proforma.TagBase] | None:
+            mods: list[TagBase] | None,
+        ) -> list[TagBase] | None:
             if mods is None:
                 return None
 
@@ -568,9 +572,10 @@ class Peptidoform:
             # Setup target_aa -> modification_list dictionary
             rule_dict = defaultdict(list)
             for rule in self.properties["fixed_modifications"]:
-                if rule.targets is not None:
-                    for target_aa in rule.targets:
-                        rule_dict[target_aa].append(rule.modification_tag)
+                if rule.targets is None:
+                    continue
+                for target_aa in rule.targets:
+                    rule_dict[target_aa].append(rule.modification_tag)
 
             # Apply modifications to sequence
             for i, (aa, site_mods) in enumerate(self.parsed_sequence):

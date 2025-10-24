@@ -140,7 +140,7 @@ class IonbotReader(ReaderBase):
     def _parse_peptidoform(peptide: str, modifications: str, charge: str | int) -> Peptidoform:
         """Parse peptide, modifications, and charge to Peptidoform."""
         # Split peptide into list of amino acids with termini
-        peptide_list: list[str] = [""] + list(peptide) + [""]
+        peptide_elements: list[str] = [""] + list(peptide) + [""]
 
         # Add modifications
         pattern: re.Pattern[str] = re.compile(r"^(?P<U>\[\S*?\])?(?P<mod>.*?)(?P<AA>\[\S*?\])?$")
@@ -168,21 +168,21 @@ class IonbotReader(ReaderBase):
                         f"Invalid position '{position_str}' in modifications '{modifications}'"
                     ) from e
 
-                if position < 0 or position >= len(peptide_list):
+                if position < 0 or position >= len(peptide_elements):
                     raise InvalidIonbotModificationError(
-                        f"Position {position} out of range for peptide '{peptide}' (length {len(peptide_list) - 2})"
+                        f"Position {position} out of range for peptide '{peptide}' (length {len(peptide_elements) - 2})"
                     )
 
                 if mod_match.group("U"):
                     parsed_label = "U:" + mod_match.group("U")[1:-1]
                 else:
                     parsed_label = mod_match.group("mod")
-                peptide_list[position] += f"[{parsed_label}]"
+                peptide_elements[position] += f"[{parsed_label}]"
 
         # Add terminal modifications
-        peptide_list[0] = peptide_list[0] + "-" if peptide_list[0] else ""
-        peptide_list[-1] = "-" + peptide_list[-1] if peptide_list[-1] else ""
-        proforma_seq = "".join(peptide_list)
+        peptide_elements[0] = peptide_elements[0] + "-" if peptide_elements[0] else ""
+        peptide_elements[-1] = "-" + peptide_elements[-1] if peptide_elements[-1] else ""
+        proforma_seq = "".join(peptide_elements)
 
         # Add charge state
         proforma_seq += f"/{charge}"

@@ -25,7 +25,7 @@ from psm_utils.psm_list import PSMList
 
 filterwarnings(
     "ignore",
-    message="OPENMS_DATA_PATH environment variable already exists",
+    message="Warning: OPENMS_DATA_PATH environment variable already exists.*",
     category=UserWarning,
     module="pyopenms",
 )
