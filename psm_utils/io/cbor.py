@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -49,6 +50,10 @@ class CBORReader(ReaderBase):
         ----------
         filename: str, Pathlib.Path
             Path to PSM file.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
@@ -110,15 +115,21 @@ class CBORWriter(WriterBase):
         ----------
         filename: str, Pathlib.Path
             Path to PSM file.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
-        self._psm_cache = []
+        self._psm_cache: list[dict[str, Any]] = []
 
     def __enter__(self) -> CBORWriter:
+        """Enter context manager."""
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
+        """Exit context manager and flush remaining PSMs to file."""
         self._flush()
 
     def write_psm(self, psm: PSM):
@@ -143,9 +154,6 @@ class CBORWriter(WriterBase):
 
     def _flush(self):
         """Write the cached PSMs to the CBOR file."""
-        if not self._psm_cache:
-            self._psm_cache = []
-
         with open(self.filename, "wb") as open_file:
             cbor2.dump(self._psm_cache, open_file)
 

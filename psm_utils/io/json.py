@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -41,13 +41,17 @@ class JSONReader(ReaderBase):
         ----------
         filename: str, Pathlib.Path
             Path to PSM file.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
 
     def __iter__(self):
         """Iterate over file and return PSMs one-by-one."""
-        with open(self.filename, "rt", encoding="utf-8") as open_file:
+        with open(self.filename, encoding="utf-8") as open_file:
             data = json.load(open_file)
 
             if not isinstance(data, list):
@@ -89,7 +93,7 @@ class JSONWriter(WriterBase):
     def __init__(
         self,
         filename: str | Path,
-        indent: Optional[int] = 2,
+        indent: int | None = 2,
         *args,
         **kwargs,
     ):
@@ -103,16 +107,22 @@ class JSONWriter(WriterBase):
         indent: int, optional
             Number of spaces for JSON indentation. Set to None for compact output.
             Default is 2.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
         self.indent = indent
-        self._psm_cache = []
+        self._psm_cache: list[dict[str, Any]] = []
 
     def __enter__(self) -> JSONWriter:
+        """Enter context manager."""
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
+        """Exit context manager and flush remaining PSMs to file."""
         self._flush()
 
     def write_psm(self, psm: PSM):
@@ -126,7 +136,7 @@ class JSONWriter(WriterBase):
         self._flush()
 
     @staticmethod
-    def _psm_to_entry(psm: PSM) -> dict:
+    def _psm_to_entry(psm: PSM) -> dict[str, Any]:
         """Convert PSM to a dictionary suitable for JSON serialization."""
         psm_dict = dict(psm)
         # Convert peptidoform to string
@@ -137,10 +147,7 @@ class JSONWriter(WriterBase):
 
     def _flush(self):
         """Write the cached PSMs to the JSON file."""
-        if not self._psm_cache:
-            self._psm_cache = []
-
-        with open(self.filename, "wt", encoding="utf-8") as open_file:
+        with open(self.filename, "w", encoding="utf-8") as open_file:
             json.dump(self._psm_cache, open_file, indent=self.indent)
 
         self._psm_cache = []
