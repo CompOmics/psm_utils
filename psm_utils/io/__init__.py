@@ -45,11 +45,13 @@ from typing import Protocol, TypedDict, runtime_checkable
 from rich.progress import track
 
 import psm_utils.io.alphadia as alphadia
+import psm_utils.io.cbor as cbor
 import psm_utils.io.diann as diann
 import psm_utils.io.flashlfq as flashlfq
 import psm_utils.io.fragpipe as fragpipe
 import psm_utils.io.idxml as idxml
 import psm_utils.io.ionbot as ionbot
+import psm_utils.io.json as json
 import psm_utils.io.maxquant as maxquant
 import psm_utils.io.msamanda as msamanda
 import psm_utils.io.mzid as mzid
@@ -185,6 +187,18 @@ FILETYPES: dict[str, FileType] = {
         "writer": parquet.ParquetWriter,
         "extension": ".parquet",
         "filename_pattern": r"^.*\.parquet$",
+    },
+    "json": {
+        "reader": json.JSONReader,
+        "writer": json.JSONWriter,
+        "extension": ".json",
+        "filename_pattern": r"^.*\.json$",
+    },
+    "cbor": {
+        "reader": cbor.CBORReader,
+        "writer": cbor.CBORWriter,
+        "extension": ".cbor",
+        "filename_pattern": r"^.*\.cbor$",
     },
     "tsv": {  # List after more specific TSV patterns to avoid matching conflicts
         "reader": tsv.TSVReader,
