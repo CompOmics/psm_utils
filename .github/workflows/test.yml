@@ -67,7 +67,7 @@ jobs:
 
       - name: Install optional dependencies that might not be available
         continue-on-error: true
-        run: pip install .[idxml]
+        run: pip install .[io]
 
       - name: Test imports
         run: python -c "import psm_utils"
