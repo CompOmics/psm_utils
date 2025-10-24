@@ -46,6 +46,8 @@ docs = [
 ]
 online = ["streamlit", "plotly"]
 idxml = ["pyopenms"]
+cbor = ["cbor2 >= 5"]
+io = ["pyopenms", "cbor2 >= 5"]
 
 [project.urls]
 GitHub = "https://github.com/compomics/psm_utils"

@@ -7,10 +7,18 @@ psm_utils.io
 
 
 
-psm_utils.io.alphapept
-##################
+psm_utils.io.alphadia
+#####################
 
-.. automodule:: psm_utils.io.alphapept
+.. automodule:: psm_utils.io.alphadia
+   :members:
+   :inherited-members:
+
+
+psm_utils.io.cbor
+#################
+
+.. automodule:: psm_utils.io.cbor
    :members:
    :inherited-members:
 
@@ -32,7 +40,7 @@ psm_utils.io.flashlfq
 
 
 psm_utils.io.fragpipe
-##################
+#####################
 
 .. automodule:: psm_utils.io.fragpipe
    :members:
@@ -51,6 +59,15 @@ psm_utils.io.ionbot
 ##########################
 
 .. automodule:: psm_utils.io.ionbot
+   :members:
+   :inherited-members:
+
+
+
+psm_utils.io.json
+#################
+
+.. automodule:: psm_utils.io.json
    :members:
    :inherited-members:
 
