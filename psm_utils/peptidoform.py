@@ -8,7 +8,7 @@ from typing import Literal, TypedDict, cast
 
 import numpy as np
 from pyteomics import mass, proforma  # type: ignore[import]
-from pyteomics.proforma import ProForma, TagBase
+from pyteomics.proforma import ProForma, TagBase  # type: ignore[import]
 
 from psm_utils.exceptions import PSMUtilsException
 from psm_utils.utils import mass_to_mz
