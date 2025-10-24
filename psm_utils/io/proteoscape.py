@@ -2,18 +2,19 @@
 
 import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
+import pyarrow.parquet as pq  # type: ignore[import]
 
-from psm_utils.psm import PSM
-from psm_utils.psm_list import PSMList
 from psm_utils.io._base_classes import ReaderBase
 from psm_utils.io.exceptions import PSMUtilsIOException
 from psm_utils.peptidoform import format_number_as_string
+from psm_utils.psm import PSM
+from psm_utils.psm_list import PSMList
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +26,30 @@ class ProteoScapeReader(ReaderBase):
 
     def __init__(
         self,
-        filename: Union[str, Path],
-        *args,
-        **kwargs,
+        filename: str | Path,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         """
         Reader for ProteoScape Parquet files.
 
         Parameters
         ----------
-        filename: str, pathlib.Path
-            Path to MSF file.
+        filename
+            Path to ProteoScape Parquet file.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
-        self.filename = filename
+        super().__init__(filename, *args, **kwargs)
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return number of PSMs in file."""
         return pq.read_metadata(self.filename).num_rows
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
         with pq.ParquetFile(self.filename) as reader:
             for batch in reader.iter_batches():
@@ -54,36 +59,36 @@ class ProteoScapeReader(ReaderBase):
                     except Exception as e:
                         raise PSMUtilsIOException(f"Error while parsing row {row}:\n{e}") from e
 
-    @classmethod
-    def from_dataframe(cls, dataframe: pd.DataFrame) -> PSMList:
+    @staticmethod
+    def from_dataframe(dataframe: pd.DataFrame) -> PSMList:
         """Create a PSMList from a ProteoScape Pandas DataFrame."""
         return PSMList(
-            psm_list=[
-                cls._get_peptide_spectrum_match(cls(""), entry)
-                for entry in dataframe.to_dict(orient="records")
-            ]
+            psm_list=[_parse_entry(entry) for entry in dataframe.to_dict(orient="records")]  # type: ignore[arg-type]
         )
 
 
 def _parse_peptidoform(
-    stripped_peptide: str, ptms: np.ndarray, ptm_locations: np.ndarray, precursor_charge: int
+    stripped_peptide: str,
+    ptms: np.ndarray[Any, Any],
+    ptm_locations: np.ndarray[Any, Any],
+    precursor_charge: int,
 ) -> str:
     """Parse peptide sequence and modifications to ProForma."""
     peptidoform = list(stripped_peptide)
     n_term = ""
     c_term = ""
-    for ptm, ptm_location in zip(ptms, ptm_locations):
-        ptm = format_number_as_string(ptm)
+    for ptm, ptm_location in zip(ptms, ptm_locations, strict=True):
+        ptm_str = format_number_as_string(ptm)
         if ptm_location == -1:
-            n_term = f"[{ptm}]-"
+            n_term = f"[{ptm_str}]-"
         elif ptm_location == len(peptidoform):
-            c_term = f"-[{ptm}]"
+            c_term = f"-[{ptm_str}]"
         else:
-            peptidoform[ptm_location] = f"{peptidoform[ptm_location]}[{ptm}]"
+            peptidoform[ptm_location] = f"{peptidoform[ptm_location]}[{ptm_str}]"
     return f"{n_term}{''.join(peptidoform)}{c_term}/{precursor_charge}"
 
 
-def _parse_entry(entry: dict) -> PSM:
+def _parse_entry(entry: dict[str, Any]) -> PSM:
     """Parse a single entry from ProteoScape Parquet file to PSM object."""
     return PSM(
         peptidoform=_parse_peptidoform(
@@ -93,7 +98,7 @@ def _parse_entry(entry: dict) -> PSM:
             entry["precursor_charge"],
         ),
         spectrum_id=entry["ms2_id"],
-        run=entry.get("run", None),
+        run=entry.get("run"),
         is_decoy=all(DECOY_PATTERN.match(p) for p in entry["locus_name"]),
         score=entry["x_corr_score"],
         precursor_mz=entry["precursor_mz"],

@@ -1,21 +1,23 @@
+"""Peptidoform module for handling peptide sequences with modifications and charge states."""
+
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable, List, Tuple, Union
+from collections.abc import Iterable
+from typing import Literal, TypedDict, cast
 
 import numpy as np
-from pyteomics import mass, proforma
+from pyteomics import mass, proforma  # type: ignore[import]
+from pyteomics.proforma import ProForma, TagBase  # type: ignore[import]
 
 from psm_utils.exceptions import PSMUtilsException
 from psm_utils.utils import mass_to_mz
 
 
 class Peptidoform:
-    """
-    Peptide sequence, modifications and charge state represented in ProForma notation.
-    """
+    """Peptide sequence, modifications and charge state represented in ProForma notation."""
 
-    def __init__(self, proforma_sequence: Union[str, proforma.ProForma]) -> None:
+    def __init__(self, proforma_sequence: str | ProForma) -> None:
         """
         Peptide sequence, modifications and charge state represented in ProForma notation.
 
@@ -29,8 +31,10 @@ class Peptidoform:
         ----------
         parsed_sequence : list
             List of tuples with residue and modifications for each location.
-        properties : dict[str, Any]
-            Dict with sequence-wide properties.
+        properties : :py:class:`PeptidoformProperties`
+            Dictionary with properties of the peptidoform, including N- and C-terminal
+            modifications, unlocalized modifications, labile modifications, fixed
+            modifications, and charge state.
 
         Examples
         --------
@@ -39,14 +43,19 @@ class Peptidoform:
         711.2567622919099
 
         """
+        self.parsed_sequence: list[tuple[str, list[TagBase] | None]]
+        self.properties: PeptidoformProperties
+
+        # Parse ProForma
         if isinstance(proforma_sequence, str):
             try:
-                self.parsed_sequence, self.properties = proforma.parse(proforma_sequence)
+                self.parsed_sequence, properties = proforma.parse(proforma_sequence)
+                self.properties = cast(PeptidoformProperties, properties)
             except proforma.ProFormaError as e:
                 raise PeptidoformException(
                     f"Could not parse ProForma sequence: {proforma_sequence}"
                 ) from e
-        elif isinstance(proforma_sequence, proforma.ProForma):
+        elif isinstance(proforma_sequence, ProForma):
             self.parsed_sequence = proforma_sequence.sequence
             self.properties = proforma_sequence.properties
         else:
@@ -58,29 +67,45 @@ class Peptidoform:
             raise NotImplementedError("Peptidoforms with isotopes are currently not supported.")
 
     def __repr__(self) -> str:
+        """Return a string representation of the Peptidoform object."""
         return f"{self.__class__.__qualname__}('{self.proforma}')"
 
     def __str__(self) -> str:
+        """Return the ProForma representation of the Peptidoform."""
         return self.proforma
 
     def __hash__(self) -> int:
+        """Return a hash of the Peptidoform based on its ProForma representation."""
         return hash(self.proforma)
 
-    def __eq__(self, __o: Union[Peptidoform, str]) -> bool:
+    def __eq__(self, __o: object) -> bool:
+        """Check equality of Peptidoform with another object."""
         if isinstance(__o, str):
             return self.proforma == __o
-        elif isinstance(__o, Peptidoform):
+        elif isinstance(__o, Peptidoform):  # type: ignore[return]
             return self.proforma == __o.proforma
         else:
-            raise TypeError(f"Cannot compare {type(__o)} with Peptidoform.")
+            raise TypeError(f"Unsupported comparison type for Peptidoform: {type(__o)}")
 
-    def __iter__(self) -> Iterable[Tuple[str, Union[None, List[proforma.TagBase]]]]:
+    def __lt__(self, __o: object) -> bool:
+        """Check if this Peptidoform is less than another object."""
+        if isinstance(__o, str):
+            return self.proforma < __o
+        elif isinstance(__o, Peptidoform):
+            return self.proforma < __o.proforma
+        else:
+            raise TypeError(f"Unsupported comparison type for Peptidoform: {type(__o)}")
+
+    def __iter__(self) -> Iterable[tuple[str, None | list[TagBase]]]:
+        """Return an iterator over the parsed sequence."""
         return self.parsed_sequence.__iter__()
 
     def __len__(self) -> int:
+        """Return the length of the parsed sequence."""
         return self.parsed_sequence.__len__()
 
-    def __getitem__(self, key: int) -> Tuple[str, Union[None, List[proforma.TagBase]]]:
+    def __getitem__(self, key: int) -> tuple[str, None | list[TagBase]]:
+        """Get the item at the specified index from the parsed sequence."""
         return self.parsed_sequence.__getitem__(key)
 
     @property
@@ -122,7 +147,7 @@ class Peptidoform:
         'AC[U:4]DEK'
 
         """
-        properties_without_charge = self.properties.copy()
+        properties_without_charge = dict(self.properties).copy()
         properties_without_charge.pop("charge_state", None)
         return proforma.to_proforma(self.parsed_sequence, **properties_without_charge)
 
@@ -154,15 +179,14 @@ class Peptidoform:
         modifications.
 
         """
-        mod_properties = [
-            "n_term",
-            "c_term",
-            "unlocalized_modifications",
-            "labile_modifications",
-            "fixed_modifications",
-        ]
         has_sequential = any(mods for _, mods in self.parsed_sequence)
-        has_other = any([self.properties[prop] for prop in mod_properties])
+        has_other = (
+            bool(self.properties["n_term"])
+            or bool(self.properties["c_term"])
+            or bool(self.properties["unlocalized_modifications"])
+            or bool(self.properties["labile_modifications"])
+            or bool(self.properties["fixed_modifications"])
+        )
         return has_sequential or has_other
 
     @property
@@ -188,6 +212,8 @@ class Peptidoform:
         # Get compositions for fixed modifications by amino acid
         fixed_rules = {}
         for rule in self.properties["fixed_modifications"]:
+            if rule.targets is None:
+                continue
             for aa in rule.targets:
                 fixed_rules[aa] = rule.modification_tag.composition
 
@@ -220,11 +246,12 @@ class Peptidoform:
             # Localized modifications
             if tags:
                 for tag in tags:
+                    tag = cast(proforma.ModificationBase, tag)
                     try:
                         position_comp += tag.composition
                     except (AttributeError, KeyError) as e:
                         raise ModificationException(
-                            "Cannot resolve composition for modification " f"{tag.value}."
+                            f"Cannot resolve composition for modification {tag.value}."
                         ) from e
             comp_list.append(position_comp)
 
@@ -275,7 +302,7 @@ class Peptidoform:
         return comp
 
     @property
-    def sequential_theoretical_mass(self) -> float:
+    def sequential_theoretical_mass(self) -> list[float]:
         """
         Monoisotopic mass of both termini and each (modified) residue.
 
@@ -296,6 +323,8 @@ class Peptidoform:
         """
         fixed_rules = {}
         for rule in self.properties["fixed_modifications"]:
+            if rule.targets is None:
+                continue
             for aa in rule.targets:
                 fixed_rules[aa] = rule.modification_tag.mass
 
@@ -326,11 +355,12 @@ class Peptidoform:
             # Localized modifications
             if tags:
                 for tag in tags:
+                    tag = cast(proforma.ModificationBase, tag)
                     try:
                         position_mass += tag.mass
                     except (AttributeError, KeyError) as e:
                         raise ModificationException(
-                            "Cannot resolve mass for modification " f"{tag.value}."
+                            f"Cannot resolve mass for modification {tag.value}."
                         ) from e
             mass_list.append(position_mass)
 
@@ -350,7 +380,8 @@ class Peptidoform:
 
     @property
     def theoretical_mass(self) -> float:
-        """Monoisotopic mass of the full uncharged peptidoform.
+        """
+        Monoisotopic mass of the full uncharged peptidoform.
 
         Includes all modifications, also labile and unlocalized.
 
@@ -409,7 +440,7 @@ class Peptidoform:
             requires renaming. Modification labels that are not in the mapping will not
             be renamed.
 
-        See also
+        See Also
         --------
         psm_utils.psm_list.PSMList.rename_modifications
 
@@ -425,28 +456,40 @@ class Peptidoform:
 
         """
 
-        def _rename_modification_list(mods):
+        def _rename_modification_list(
+            mods: list[TagBase] | None,
+        ) -> list[TagBase] | None:
+            if mods is None:
+                return None
+
             new_mods = []
             for mod in mods:
-                try:
-                    if isinstance(mod, proforma.MassModification):
-                        mod_value = format_number_as_string(mod.value)
-                    else:
-                        mod_value = mod.value
-                    if mod_value in mapping:
-                        new_mods.append(proforma.process_tag_tokens(mapping[mod_value]))
-                    else:
-                        new_mods.append(mod)
-                except AttributeError:
-                    if isinstance(mod, proforma.ModificationRule):
-                        if mod.modification_tag.value in mapping:
-                            mod.modification_tag = proforma.process_tag_tokens(
-                                mapping[mod.modification_tag.value]
-                            )
-                        new_mods.append(mod)
-                    else:
-                        mod.value  # re-raise AttributeError
+                # Get value of the tag, formatted as string
+                if isinstance(mod, proforma.MassModification):
+                    mod_value = format_number_as_string(mod.value)
+                else:
+                    mod_value = mod.value
+
+                # Rename modification if it is in the mapping
+                if mod_value in mapping:
+                    new_mods.append(proforma.process_tag_tokens(mapping[mod_value]))
+                else:
+                    new_mods.append(mod)
+
             return new_mods
+
+        def _rename_modification_rule_list(
+            rules: list[proforma.ModificationRule] | None,
+        ) -> None:
+            if rules is None:
+                return None
+
+            for rule in rules:
+                # Rename modification tag if it is in the mapping
+                if rule.modification_tag.value in mapping:
+                    rule.modification_tag = proforma.process_tag_tokens(
+                        mapping[rule.modification_tag.value]
+                    )
 
         # Sequential modifications
         for i, (aa, mods) in enumerate(self.parsed_sequence):
@@ -455,15 +498,15 @@ class Peptidoform:
                 self.parsed_sequence[i] = (aa, new_mods)
 
         # Non-sequence modifications
-        for mod_type in [
+        for mod_type in (
             "n_term",
             "c_term",
             "unlocalized_modifications",
-            "labile_modifications",
-            "fixed_modifications",
-        ]:
-            if self.properties[mod_type]:
-                self.properties[mod_type] = _rename_modification_list(self.properties[mod_type])
+        ):
+            self.properties[mod_type] = _rename_modification_list(self.properties[mod_type])  # type: ignore[assignment]
+
+        # Modification rules
+        _rename_modification_rule_list(self.properties["fixed_modifications"])
 
     def add_fixed_modifications(
         self, modification_rules: list[tuple[str, list[str]]] | dict[str, list[str]]
@@ -475,7 +518,7 @@ class Peptidoform:
         added in the "fixed modifications" notation, at the front of the ProForma
         sequence.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.apply_fixed_modifications
 
@@ -496,15 +539,14 @@ class Peptidoform:
 
         """
         if isinstance(modification_rules, dict):
-            modification_rules = modification_rules.items()
-        modification_rules = [
+            modification_rules = list(modification_rules.items())
+
+        parsed_modification_rules = [
             proforma.ModificationRule(proforma.process_tag_tokens(mod), targets)
             for mod, targets in modification_rules
         ]
-        if self.properties["fixed_modifications"]:
-            self.properties["fixed_modifications"].extend(modification_rules)
-        else:
-            self.properties["fixed_modifications"] = modification_rules
+
+        self.properties.setdefault("fixed_modifications", []).extend(parsed_modification_rules)
 
     def apply_fixed_modifications(self):
         """
@@ -514,7 +556,7 @@ class Peptidoform:
         (once at the beginning of the sequence) as modifications throughout the
         sequence at each affected amino acid residue.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.apply_fixed_modifications
 
@@ -530,6 +572,8 @@ class Peptidoform:
             # Setup target_aa -> modification_list dictionary
             rule_dict = defaultdict(list)
             for rule in self.properties["fixed_modifications"]:
+                if rule.targets is None:
+                    continue
                 for target_aa in rule.targets:
                     rule_dict[target_aa].append(rule.modification_tag)
 
@@ -551,6 +595,25 @@ class Peptidoform:
 
             # Remove fixed modifications
             self.properties["fixed_modifications"] = []
+
+
+class PeptidoformProperties(TypedDict):
+    """Property items of a :py:class:`Peptidoform`."""
+
+    n_term: list[proforma.ModificationBase] | None
+    c_term: list[proforma.ModificationBase] | None
+    unlocalized_modifications: list[proforma.ModificationBase]
+    labile_modifications: list[proforma.ModificationBase]
+    fixed_modifications: list[proforma.ModificationRule]
+    charge_state: proforma.ChargeState
+    isotopes: list[proforma.StableIsotope]
+
+
+_ModificationsProperty = Literal[
+    "n_term", "c_term", "unlocalized_modifications", "labile_modifications"
+]
+
+_ModificationRulesProperty = Literal["fixed_modifications"]
 
 
 def format_number_as_string(num):
