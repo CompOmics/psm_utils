@@ -193,17 +193,61 @@ class PSMList(BaseModel):
         return psm_dict
 
     def set_ranks(self, lower_score_better: bool = False):
-        """Set identification ranks for all PSMs in :py:class:`PSMList`."""
-        columns = ["collection", "run", "spectrum_id", "score"]
-        self["rank"] = (
-            pd.DataFrame(np.array([self[c] for c in columns]).transpose(), columns=columns)
-            .sort_values("score", ascending=lower_score_better)
-            .fillna(0)  # groupby does not play well with None values
-            .groupby(["collection", "run", "spectrum_id"])
-            .cumcount()
-            .sort_index()
-            + 1  # 1-based counting
-        ).to_list()
+        """
+        Set identification ranks for all PSMs in :py:class:`PSMList`.
+
+        Ranks are assigned per group (collection, run, spectrum_id), with rank 1
+        being the best-scoring PSM in each group.
+        """
+
+        # Extract and normalize columns (None → empty string for consistent sorting)
+        def get_column(key: str) -> np.ndarray:
+            """Extract column and convert None values to empty strings."""
+            arr = np.asarray(self[key], dtype=object)
+            # Only replace None/NaN with empty string, keep dtype object if possible
+            arr = np.where(arr == None, "", arr)  # noqa: E711
+            return arr
+
+        collection = get_column("collection")
+        run = get_column("run")
+        spectrum_id = get_column("spectrum_id")
+        score = np.nan_to_num(np.asarray(self["score"], dtype=float), nan=0.0)
+
+        # Sort by group (collection, run, spectrum_id), then by score
+        # lexsort sorts by the last key first, so order matters
+        sort_key = score if lower_score_better else -score
+        sorted_indices = np.lexsort((sort_key, spectrum_id, run, collection))
+
+        # Assign ranks: reset to 1 for each new group, increment within groups
+        # Vectorized approach: detect group boundaries and compute cumulative ranks
+        sorted_collection = collection[sorted_indices]
+        sorted_run = run[sorted_indices]
+        sorted_spectrum_id = spectrum_id[sorted_indices]
+
+        # Detect where groups change (boundaries between different spectra)
+        group_changes = np.ones(len(self), dtype=bool)
+        group_changes[1:] = (
+            (sorted_collection[1:] != sorted_collection[:-1])
+            | (sorted_run[1:] != sorted_run[:-1])
+            | (sorted_spectrum_id[1:] != sorted_spectrum_id[:-1])
+        )
+
+        # Compute ranks: cumulative sum within each group
+        # To assign ranks within each group, we use a cumulative sum.
+        # Whenever a new group starts (group_changes is True), we want to reset the rank to 1.
+        # np.where(group_changes, ranks_sorted - 1, 0) produces an array where, at each group
+        # boundary, we store the previous cumulative sum (which is the index of the last element
+        # of the previous group). np.maximum.accumulate then propagates this value forward within
+        # the group. By subtracting this from the cumulative sum, we effectively reset the rank to
+        # 1 at each group boundary.
+        ranks_sorted = np.cumsum(np.ones(len(self), dtype=int))
+        ranks_sorted -= np.maximum.accumulate(np.where(group_changes, ranks_sorted - 1, 0))
+
+        # Map ranks back to original order
+        ranks = np.empty(len(self), dtype=int)
+        ranks[sorted_indices] = ranks_sorted
+
+        self["rank"] = ranks.tolist()
 
     def get_rank1_psms(self, *args, **kwargs) -> PSMList:
         """
