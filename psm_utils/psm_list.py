@@ -1,12 +1,15 @@
+"""PSMList module for handling collections of PSMs."""
+
 from __future__ import annotations
 
 import re
-from typing import Iterable, List, Sequence
+from collections.abc import Iterator, Sequence
+from typing import cast, overload
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
-from pyteomics import auxiliary, proforma
+from pyteomics import auxiliary, proforma  # type: ignore[import]
 from rich.pretty import pretty_repr
 
 from psm_utils.psm import NUMPY_DTYPES, PSM
@@ -15,11 +18,11 @@ from psm_utils.psm import NUMPY_DTYPES, PSM
 class PSMList(BaseModel):
     """Data class representing a list of PSMs."""
 
-    psm_list: List[PSM]
+    psm_list: list[PSM]
 
-    def __init__(__pydantic_self__, **data) -> None:
+    def __init__(__pydantic_self__, **data) -> None:  # type: ignore[override]  # noqa: D417
         """
-        Data class representing a list of PSMs, with some useful functionality.
+        Represent a list of PSMs in a data class with added functionality.
 
         Parameters
         ----------
@@ -72,25 +75,41 @@ class PSMList(BaseModel):
         super().__init__(**data)
 
     def __rich_repr__(self):
+        """Rich representation of the PSMList."""
         yield "psm_list", self.psm_list
 
     def __repr__(self):
+        """Return a pretty representation of the PSMList."""
         return pretty_repr(self, max_length=5)
 
     def __str__(self):
+        """Return a string representation of the PSMList."""
         return self.__repr__()
 
-    def __add__(self, other):
+    def __add__(self, other: PSMList) -> PSMList:
+        """Concatenate two PSMLists."""
         return PSMList(psm_list=self.psm_list + other.psm_list)
 
-    def __iter__(self) -> Iterable[PSM]:
-        return self.psm_list.__iter__()
+    def __iter__(self) -> Iterator[PSM]:  # type: ignore[override]
+        """Iterate over the PSMList."""
+        return iter(self.psm_list)
 
     def __len__(self) -> int:
-        return self.psm_list.__len__()
+        """Return the length of the PSMList."""
+        return len(self.psm_list)
 
-    def __getitem__(self, item) -> PSM | list[PSM]:
-        if isinstance(item, (int, np.integer)):
+    @overload
+    def __getitem__(self, item: int | np.integer) -> PSM: ...
+
+    @overload
+    def __getitem__(self, item: slice | Sequence[bool | int] | np.ndarray) -> PSMList: ...
+
+    @overload
+    def __getitem__(self, item: str | Sequence[str]) -> np.ndarray: ...
+
+    def __getitem__(self, item) -> PSM | PSMList | np.ndarray:
+        """Get PSM or PSMList by index, slice, or property name."""
+        if isinstance(item, int | np.integer):
             # Return single PSM by index
             return self.psm_list[item]
         elif isinstance(item, slice):
@@ -119,6 +138,13 @@ class PSMList(BaseModel):
             raise TypeError(f"Unsupported indexing type: {type(item)}")
 
     def __setitem__(self, item, values: Sequence) -> None:
+        """
+        Set PSM property values for all PSMs in :py:class:`PSMList`.
+
+        If the length of `values` does not match the length of the PSMList,
+        a ValueError is raised.
+
+        """
         if not len(values) == len(self):
             raise ValueError(f"Expected value with same length as PSMList: {len(self)}")
         for value, psm in zip(values, self):
@@ -127,16 +153,18 @@ class PSMList(BaseModel):
     @property
     def collections(self) -> list:
         """List of collections in :py:class:`PSMList`."""
-        if (self["collection"] != None).any():  # noqa: E711
-            return list(np.unique(self["collection"]))
+        collection_array = np.asarray(self["collection"])
+        if (collection_array != None).any():  # noqa: E711
+            return np.unique(collection_array).tolist()
         else:
             return [None]
 
     @property
     def runs(self) -> list:
         """List of runs in :py:class:`PSMList`."""
-        if (self["run"] != None).any():  # noqa: E711
-            return list(np.unique(self["run"]))
+        run_array = np.asarray(self["run"])
+        if (run_array != None).any():  # noqa: E711
+            return np.unique(run_array).tolist()
         else:
             return [None]
 
@@ -168,14 +196,14 @@ class PSMList(BaseModel):
         """Set identification ranks for all PSMs in :py:class:`PSMList`."""
         columns = ["collection", "run", "spectrum_id", "score"]
         self["rank"] = (
-            pd.DataFrame(self[columns], columns=columns)
+            pd.DataFrame(np.array([self[c] for c in columns]).transpose(), columns=columns)
             .sort_values("score", ascending=lower_score_better)
             .fillna(0)  # groupby does not play well with None values
             .groupby(["collection", "run", "spectrum_id"])
             .cumcount()
             .sort_index()
             + 1  # 1-based counting
-        )
+        ).to_list()
 
     def get_rank1_psms(self, *args, **kwargs) -> PSMList:
         """
@@ -184,9 +212,10 @@ class PSMList(BaseModel):
         First runs :py:meth:`~set_ranks` with ``*args`` and ``**kwargs`` if if any PSM
         has no rank yet.
         """
-        if None in self["rank"]:
+        rank_array = np.asarray(self["rank"])
+        if None in rank_array:
             self.set_ranks(*args, **kwargs)
-        return self[self["rank"] == 1]
+        return PSMList(psm_list=[self.psm_list[i] for i in np.flatnonzero(rank_array == 1)])
 
     def find_decoys(self, decoy_pattern: str) -> None:
         """
@@ -211,9 +240,12 @@ class PSMList(BaseModel):
         >>> psm_list.find_decoys(r"^DECOY_")
 
         """
-        decoy_pattern = re.compile(decoy_pattern)
+        pattern = re.compile(decoy_pattern)
         for psm in self:
-            psm.is_decoy = all([decoy_pattern.search(p) is not None for p in psm.protein_list])
+            if psm.protein_list is not None:
+                psm.is_decoy = all(pattern.search(p) is not None for p in psm.protein_list)
+            else:
+                psm.is_decoy = None
 
     def calculate_qvalues(self, reverse: bool = True, **kwargs) -> None:
         """
@@ -233,7 +265,7 @@ class PSMList(BaseModel):
 
         """
         for key in ["score", "is_decoy"]:
-            if (self[key] == None).any():  # noqa: E711 (self[key] is a Numpy array)
+            if (np.asarray(self[key]) == None).any():  # noqa: E711 (self[key] is a Numpy array)
                 raise ValueError(
                     f"Cannot calculate q-values if not all PSMs have `{key}` assigned."
                 )
@@ -242,6 +274,8 @@ class PSMList(BaseModel):
             self,
             key="score",
             is_decoy="is_decoy",
+            formula=1,
+            correction=1,
             remove_decoy=False,
             reverse=reverse,
             full_output=True,
@@ -264,7 +298,7 @@ class PSMList(BaseModel):
             requires renaming. Modification labels that are not in the mapping will not
             be renamed.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.rename_modifications
 
@@ -282,7 +316,7 @@ class PSMList(BaseModel):
         added in the "fixed modifications" notation, at the front of the ProForma
         sequence.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.add_fixed_modifications
 
@@ -294,16 +328,17 @@ class PSMList(BaseModel):
 
         """
         if isinstance(modification_rules, dict):
-            modification_rules = modification_rules.items()
-        modification_rules = [
+            modification_rules = list(modification_rules.items())
+
+        parsed_modification_rules = [
             proforma.ModificationRule(proforma.process_tag_tokens(mod), targets)
             for mod, targets in modification_rules
         ]
+
         for psm in self.psm_list:
-            if psm.peptidoform.properties["fixed_modifications"]:
-                psm.peptidoform.properties["fixed_modifications"].extend(modification_rules)
-            else:
-                psm.peptidoform.properties["fixed_modifications"] = modification_rules
+            psm.peptidoform.properties.setdefault("fixed_modifications", []).extend(  # type: ignore[union-attr]
+                cast(list, parsed_modification_rules)
+            )
 
     def apply_fixed_modifications(self):
         """
@@ -312,7 +347,7 @@ class PSMList(BaseModel):
         Applies :py:meth:`psm_utils.peptidoform.Peptidoform.apply_fixed_modifications`
         on all PSM peptidoforms in the :py:class:`PSMList`.
 
-        See also
+        See Also
         --------
         psm_utils.peptidoform.Peptidoform.apply_fixed_modifications
 
@@ -330,18 +365,20 @@ class PSMList(BaseModel):
 
 
 def _is_iterable_of_bools(obj):
+    """Check if the object is an iterable of booleans."""
     try:
-        if all(isinstance(x, (bool, np.bool_)) for x in obj):
-            return True
-        else:
+        if any(not isinstance(x, bool | np.bool_) for x in obj):
             return False
+        else:
+            return True
     except (TypeError, ValueError):
         return False
 
 
 def _is_iterable_of_ints(obj):
+    """Check if the object is an iterable of integers."""
     try:
-        if not all(isinstance(x, (int, np.integer)) for x in obj):
+        if any(not isinstance(x, int | np.integer) for x in obj):
             return False
         else:
             return True
@@ -350,8 +387,9 @@ def _is_iterable_of_ints(obj):
 
 
 def _is_iterable_of_strings(obj):
+    """Check if the object is an iterable of strings."""
     try:
-        if not all(isinstance(x, str) for x in obj):
+        if any(not isinstance(x, str) for x in obj):
             return False
         else:
             return True

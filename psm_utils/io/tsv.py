@@ -51,8 +51,9 @@ from __future__ import annotations
 import ast
 import csv
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional
+from typing import Any, TextIO
 
 from pydantic import ValidationError
 
@@ -70,9 +71,9 @@ logger = logging.getLogger(__name__)
 class TSVReader(ReaderBase):
     """Reader for psm_utils TSV format."""
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
-        with open(self.filename, "rt") as open_file:
+        with open(self.filename) as open_file:
             reader = csv.DictReader(open_file, delimiter="\t")
             failed_rows = 0
             for row in reader:
@@ -91,8 +92,8 @@ class TSVReader(ReaderBase):
                     failed_rows = 0
 
     @staticmethod
-    def _parse_entry(entry: dict) -> dict:
-        """Parse single TSV entry to :py:class:`~psm_utils.psm.PSM`."""
+    def _parse_entry(entry: dict[str, str | None]) -> dict[str, Any]:
+        """Parse single TSV entry to PSM dict."""
         # Replace empty strings with None
         entry = {k: v if v else None for k, v in entry.items()}
 
@@ -106,17 +107,17 @@ class TSVReader(ReaderBase):
                 ) from e
 
         # Extract dict properties
-        parsed_entry = {}
-        provenance_data = {}
-        metadata = {}
-        rescoring_features = {}
+        parsed_entry: dict[str, Any] = {}
+        provenance_data: dict[str, str | None] = {}
+        metadata: dict[str, str | None] = {}
+        rescoring_features: dict[str, str | None] = {}
         for k, v in entry.items():
             if k.startswith("provenance:"):
-                provenance_data[k[11:]] = str(v)
+                provenance_data[k[11:]] = v
             elif k.startswith("meta:"):
-                metadata[k[5:]] = str(v)
+                metadata[k[5:]] = v
             elif k.startswith("rescoring:"):
-                rescoring_features[k[10:]] = str(v)
+                rescoring_features[k[10:]] = v
             else:
                 parsed_entry[k] = v
 
@@ -132,23 +133,25 @@ class TSVReader(ReaderBase):
 
 
 class TSVWriter(WriterBase):
-    """Reader for psm_utils TSV format."""
+    """Writer for psm_utils TSV format."""
 
     def __init__(
         self,
         filename: str | Path,
-        example_psm: Optional[PSM] = None,
-        *args,
-        **kwargs,
-    ):
+        *args: Any,
+        example_psm: PSM | None = None,
+        **kwargs: Any,
+    ) -> None:
         """
-        Reader for psm_utils TSV format.
+        Writer for psm_utils TSV format.
 
         Parameters
         ----------
-        filename: str, Pathlib.Path
+        filename
             Path to PSM file.
-        example_psm: psm_utils.psm.PSM, optional
+        *args
+            Additional positional arguments passed to the base class.
+        example_psm
             Example PSM, required to extract the column names when writing to a new
             file. Should contain all fields that are to be written to the PSM file,
             i.e., all items in the :py:attr:`provenance_data`, :py:attr:`metadata`, and
@@ -156,23 +159,27 @@ class TSVWriter(WriterBase):
             not present in the example PSM will not be written to the file, even though
             they are present in other PSMs passed to :py:meth:`write_psm` or
             :py:meth:`write_file`.
+        **kwargs
+            Additional keyword arguments passed to the base class.
+
         """
         super().__init__(filename, *args, **kwargs)
 
-        self._open_file = None
-        self._writer = None
+        self._open_file: TextIO | None = None
+        self._writer: csv.DictWriter[str] | None = None
 
         if example_psm:
-            self.fieldnames = self._psm_to_entry(example_psm).keys()
+            self.fieldnames: list[str] | None = list(self._psm_to_entry(example_psm).keys())
         else:
             self.fieldnames = None
 
     def __enter__(self) -> TSVWriter:
+        """Enter context manager for file writing."""
         if Path(self.filename).is_file():
-            with open(self.filename, "rt") as open_file:
+            with open(self.filename) as open_file:
                 # Get fieldnames
                 self.fieldnames = open_file.readline().strip().split("\t")
-            self._open_file = open(self.filename, "at", newline="")
+            self._open_file = open(self.filename, "a", newline="")
             self._writer = csv.DictWriter(
                 self._open_file,
                 fieldnames=self.fieldnames,
@@ -182,7 +189,7 @@ class TSVWriter(WriterBase):
         else:
             if not self.fieldnames:
                 raise ValueError("`example_psm` required when writing to new file.")
-            self._open_file = open(self.filename, "wt", newline="")
+            self._open_file = open(self.filename, "w", newline="")
             self._writer = csv.DictWriter(
                 self._open_file,
                 fieldnames=self.fieldnames,
@@ -192,43 +199,44 @@ class TSVWriter(WriterBase):
             self._writer.writeheader()
         return self
 
-    def __exit__(self, *args, **kwargs) -> None:
-        self._open_file.close()
-        self._open_file = None
+    def __exit__(self, *args: Any, **kwargs: Any) -> None:
+        """Exit context manager and clean up file resources."""
+        if self._open_file is not None:
+            self._open_file.close()
+            self._open_file = None
         self._writer = None
 
-    def write_psm(self, psm: PSM):
+    def write_psm(self, psm: PSM) -> None:
         """
         Write a single PSM to new or existing PSM file.
 
         Parameters
         ----------
-        psm: PSM
+        psm
             PSM object to write.
 
         """
-        entry = self._psm_to_entry(psm)
-        try:
-            self._writer.writerow(entry)
-        except AttributeError as e:
+        if self._writer is None:
             raise PSMUtilsIOException(
                 f"`write_psm` method can only be called if `{self.__class__.__qualname__}`"
                 "is opened in context (i.e., using the `with` statement)."
-            ) from e
+            )
+        entry = self._psm_to_entry(psm)
+        self._writer.writerow(entry)
 
-    def write_file(self, psm_list: PSMList):
+    def write_file(self, psm_list: PSMList) -> None:
         """
         Write an entire PSMList to a new PSM file.
 
         Parameters
         ----------
-        psm_list: PSMList
+        psm_list
             PSMList object to write to file.
 
         """
         if not self.fieldnames:
             raise ValueError("`example_psm` required when writing to new file.")
-        with open(self.filename, "wt", newline="") as f:
+        with open(self.filename, "w", newline="") as f:
             writer = csv.DictWriter(
                 f, fieldnames=self.fieldnames, delimiter="\t", extrasaction="ignore"
             )
@@ -237,7 +245,8 @@ class TSVWriter(WriterBase):
                 writer.writerow(self._psm_to_entry(psm))
 
     @staticmethod
-    def _psm_to_entry(psm: PSM) -> dict:
+    def _psm_to_entry(psm: PSM) -> dict[str, Any]:
+        """Convert PSM object to dictionary entry for TSV writing."""
         entry = psm.__dict__.copy()
 
         # Convert Peptidoform to proforma sequence

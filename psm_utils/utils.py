@@ -1,11 +1,11 @@
 """Various utility functions."""
 
-from typing import Optional
+from __future__ import annotations
 
-from pyteomics.mass import nist_mass
+from pyteomics.mass import nist_mass  # type: ignore[import-untyped]
 
 
-def mass_to_mz(mass: float, charge: int, adduct_mass: Optional[float] = None) -> float:
+def mass_to_mz(mass: float, charge: int, adduct_mass: float | None = None) -> float:
     """
     Convert mass to m/z.
 
@@ -20,11 +20,13 @@ def mass_to_mz(mass: float, charge: int, adduct_mass: Optional[float] = None) ->
 
     """
     if adduct_mass is None:
-        adduct_mass = nist_mass["H"][1][0]
-    return (mass + charge * adduct_mass) / charge
+        _adduct_mass = nist_mass["H"][1][0]
+    else:
+        _adduct_mass = float(adduct_mass)
+    return (mass + charge * _adduct_mass) / charge
 
 
-def mz_to_mass(mz: float, charge: int, adduct_mass: Optional[float] = None) -> float:
+def mz_to_mass(mz: float, charge: int, adduct_mass: float | None = None) -> float:
     """
     Convert m/z to mass.
 
@@ -39,5 +41,7 @@ def mz_to_mass(mz: float, charge: int, adduct_mass: Optional[float] = None) -> f
 
     """
     if adduct_mass is None:
-        adduct_mass = nist_mass["H"][1][0]
-    return mz * charge - charge * adduct_mass
+        _adduct_mass = nist_mass["H"][1][0]
+    else:
+        _adduct_mass = float(adduct_mass)
+    return mz * charge - charge * _adduct_mass

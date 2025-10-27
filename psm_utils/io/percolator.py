@@ -6,7 +6,6 @@ The tab-delimited input and output format for Percolator are defined on the
 
 Notes
 -----
-
 * While :py:class:`PercolatorTabReader` supports reading the peptide notation with
   preceding and following amino acids (e.g. ``R.ACDEK.F``), these amino acids are not stored and
   are not written by :py:class:`PercolatorTabWriter`.
@@ -18,8 +17,9 @@ from __future__ import annotations
 import csv
 import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Any
 
 from psm_utils.io._base_classes import ReaderBase, WriterBase
 from psm_utils.io._utils import set_csv_field_size_limit
@@ -33,14 +33,16 @@ set_csv_field_size_limit()
 
 
 class PercolatorTabReader(ReaderBase):
+    """Reader for Percolator Tab PIN/POUT format."""
+
     def __init__(
         self,
         filename: str | Path,
-        score_column=None,
-        retention_time_column=None,
-        mz_column=None,
-        *args,
-        **kwargs,
+        *args: Any,
+        score_column: str | None = None,
+        retention_time_column: str | None = None,
+        mz_column: str | None = None,
+        **kwargs: Any,
     ) -> None:
         """
         Reader for Percolator Tab PIN/POUT PSM file.
@@ -48,21 +50,23 @@ class PercolatorTabReader(ReaderBase):
         As the score, retention time, and precursor m/z are often embedded as feature
         columns, but not with a fixed column name, their respective column names need to
         be provided as parameters to the class. If not provided, these properties will
-        not be added to the resulting :py:class:`~psm_utils.psm.PSM`.
-        Nevertheless, they will still be added to its
-        :py:attr:`~psm_utils.psm.PSM.rescoring_features` property
-        dictionary, along with the other features.
+        not be added to the resulting PSM. Nevertheless, they will still be added to its
+        rescoring_features property dictionary, along with the other features.
 
         Parameters
         ----------
-        filename: str, pathlib.Path
+        filename
             Path to PSM file.
-        score_column: str, optional
+        *args
+            Additional positional arguments passed to parent class.
+        score_column
             Name of the column that holds the primary PSM score.
-        retention_time_column: str, optional
+        retention_time_column
             Name of the column that holds the retention time.
-        mz_column: str, optional
+        mz_column
             Name of the column that holds the precursor m/z.
+        **kwargs
+            Additional keyword arguments passed to parent class.
 
         """
         super().__init__(filename, *args, **kwargs)
@@ -99,31 +103,28 @@ class PercolatorTabReader(ReaderBase):
         for col in [self.score_column, self.rt_column, self.mz_column]:
             if col and col.lower() not in self.fieldnames:
                 raise PercolatorIOException(
-                    f"Column `{col}` not found in header of Percolator Tab file "
-                    f"`{self.filename}`."
+                    f"Column `{col}` not found in header of Percolator Tab file `{self.filename}`."
                 )
 
-    def __iter__(self) -> Iterable[PSM]:
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
         with _PercolatorTabIO(
             self.filename, "rt", protein_separator=self._protein_separator
         ) as open_file:
             reader = csv.DictReader(open_file, delimiter="\t")
             for entry in reader:
-                if entry[self.id_column] == "DefaultDirection":
-                    pass
-                else:
-                    psm = self._parse_entry(entry)
-                    yield psm
+                if entry[self.id_column] != "DefaultDirection":
+                    yield self._parse_entry(entry)
 
     @staticmethod
-    def _read_header(filename):
-        with open(filename, "rt") as f:
+    def _read_header(filename: str | Path) -> list[str]:
+        """Read header line and return fieldnames."""
+        with open(filename) as f:
             fieldnames = f.readline().strip().lower().split("\t")
         return fieldnames
 
     @staticmethod
-    def _infer_charge_columns(fieldnames):
+    def _infer_charge_columns(fieldnames: list[str]) -> tuple[str | None, dict[int, str]]:
         """Infer columns that hold the precursor charge from the header fieldnames."""
         # Infer single charge column
         charge_column = None
@@ -142,7 +143,7 @@ class PercolatorTabReader(ReaderBase):
         return charge_column, charge_onehot_columns
 
     @staticmethod
-    def _parse_peptidoform(percolator_peptide, charge):
+    def _parse_peptidoform(percolator_peptide: str, charge: int | None) -> Peptidoform:
         """Parse Percolator TSV peptide notation to Peptidoform."""
         # Remove leading and trailing amino acids (e.g., R.PEPTIDE.S -> PEPTIDE)
         match = re.match(r"^(?:[A-Z-])?\.(.+)\.(?:[A-Z-])?$", percolator_peptide)
@@ -157,7 +158,7 @@ class PercolatorTabReader(ReaderBase):
             peptidoform += f"/{charge}"
         return Peptidoform(peptidoform)
 
-    def _parse_charge(self, entry) -> int | None:
+    def _parse_charge(self, entry: dict[str, str]) -> int | None:
         """Parse charge state from single or one-hot encoded charge state."""
         if self.charge_column:
             return int(entry["charge"])
@@ -165,32 +166,32 @@ class PercolatorTabReader(ReaderBase):
             for charge_state, column_name in self.charge_onehot_columns.items():
                 if entry[column_name] == "1":
                     return charge_state
-        else:
-            return None
+        return None
 
-    def _parse_entry(self, entry):
+    def _parse_entry(self, entry: dict[str, str]) -> PSM:
         """Parse Percolator TSV entry to PSM."""
-        label = entry["label"] if "label" in entry else None
+        label = entry.get("label")
         is_decoy = True if label == "-1" else False if label == "1" else None
         rescoring_features = {
             k: str(v) for k, v in entry.items() if k not in self.non_feature_columns
         }
         charge = self._parse_charge(entry)
         peptidoform = self._parse_peptidoform(entry["peptide"], charge)
-        protein_list = (
-            entry["proteins"].split(self._protein_separator)
-            if "proteins" in entry
-            else entry["proteinids"].split(self._protein_separator)
-            if "proteinids" in entry
-            else None
-        )
-        psm = PSM(
+
+        # Get protein list
+        protein_list = None
+        if "proteins" in entry:
+            protein_list = entry["proteins"].split(self._protein_separator)
+        elif "proteinids" in entry:
+            protein_list = entry["proteinids"].split(self._protein_separator)
+
+        return PSM(
             peptidoform=peptidoform,
             spectrum_id=entry[self.id_column],
             is_decoy=is_decoy,
             score=float(entry[self.score_column.lower()]) if self.score_column else None,
-            qvalue=entry["q-value"] if "q-value" in entry else None,
-            pep=entry["posterior_error_prob"] if "posterior_error_prob" in entry else None,
+            qvalue=entry.get("q-value"),
+            pep=entry.get("posterior_error_prob"),
             precursor_mz=float(entry[self.mz_column.lower()]) if self.mz_column else None,
             retention_time=float(entry[self.rt_column.lower()]) if self.rt_column else None,
             protein_list=protein_list,
@@ -198,43 +199,47 @@ class PercolatorTabReader(ReaderBase):
             provenance_data={"filename": str(self.filename)},
             rescoring_features=rescoring_features,
         )
-        return psm
 
 
 class PercolatorTabWriter(WriterBase):
+    """Writer for Percolator Tab PIN/POUT format."""
+
     def __init__(
         self,
         filename: str | Path,
-        style: Optional[str] = None,
-        feature_names: Optional[list[str]] = None,
+        *args: Any,
+        style: str | None = None,
+        feature_names: list[str] | None = None,
         add_basic_features: bool = False,
-        *args,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Writer for Percolator TSV "PIN" and "POUT" PSM files.
 
         Parameters
         ----------
-        filename: str, pathlib.Path
+        filename
             Path to PSM file.
-        style: str, optional
+        *args
+            Additional positional arguments passed to parent class.
+        style
             Percolator Tab style. One of {``pin``, ``pout``}. If ``pin``, the columns
             ``SpecId``, ``Label``, ``ScanNr``, ``ChargeN``, ``PSMScore``, ``Peptide``, and
             ``Proteins`` are written alongside the requested feature names
             (see ``feature_names``). If ``pout``, the columns ``PSMId``, ``Label``, ``score``,
             ``q-value``, ``posterior_error_prob``, ``peptide``, and ``proteinIds`` are written.
             By default, the style is inferred from the file name extension.
-        feature_names: list[str], optional
+        feature_names
             List of feature names to extract from PSMs and write to file. List values
-            should correspond to keys in the
-            :py:class:`~psm_utils.psm.PSM.rescoring_features` property.
-            If :py:const:`None`, no rescoring features will be written to the file. If appending to
+            should correspond to keys in the rescoring_features property.
+            If None, no rescoring features will be written to the file. If appending to
             an existing file, the existing header will be used to determine the feature
             names. Only has effect with ``pin`` style.
-        add_basic_features: bool, optional
-            If :py:const:`True`, add ``PSMScore`` and ``ChargeN`` features to the file. Only has
-            effect with ``pin`` style. Default is :py:const:`False`.
+        add_basic_features
+            If True, add ``PSMScore`` and ``ChargeN`` features to the file. Only has
+            effect with ``pin`` style.
+        **kwargs
+            Additional keyword arguments passed to parent class.
 
         """
         super().__init__(filename, *args, **kwargs)
@@ -276,8 +281,8 @@ class PercolatorTabWriter(WriterBase):
         else:
             raise ValueError("Invalid Percolator Tab style. Should be one of {`pin`, `pout`}.")
 
-        self._open_file = None
-        self._writer = None
+        self._open_file: _PercolatorTabIO | None = None
+        self._writer: csv.DictWriter[str] | None = None
         self._protein_separator = "|||"
         self._current_scannr = 0
 
@@ -289,7 +294,7 @@ class PercolatorTabWriter(WriterBase):
             self.filename, mode, newline="", protein_separator=self._protein_separator
         )
         if file_existed:
-            fieldnames, self._current_scannr = self._parse_existing_file(self.filename)
+            fieldnames, self._current_scannr = self._parse_existing_file(self.filename, self.style)
         else:
             fieldnames = self._columns
             self._current_scannr = -1
@@ -304,27 +309,27 @@ class PercolatorTabWriter(WriterBase):
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
-        self._open_file.close()
+        """Close file and writer."""
+        if self._open_file is not None:
+            self._open_file.close()
         self._open_file = None
         self._writer = None
-        self._current_scannr = None
+        self._current_scannr = 0
 
-    def write_psm(self, psm: PSM):
+    def write_psm(self, psm: PSM) -> None:
         """Write a single PSM to the PSM file."""
+        if self._writer is None:
+            raise PSMUtilsIOException(
+                f"`write_psm` method can only be called if `{self.__class__.__qualname__}`"
+                " is opened in context (i.e., using the `with` statement)."
+            )
         entry = self._psm_to_entry(psm)
         self._current_scannr += 1
         entry["ScanNr"] = self._current_scannr
-        try:
-            self._writer.writerow(entry)
-        except AttributeError as e:
-            raise PSMUtilsIOException(
-                f"`write_psm` method can only be called if `{self.__class__.__qualname__}`"
-                "is opened in context (i.e., using the `with` statement)."
-            ) from e
-        else:
-            self._current_scannr = entry["ScanNr"]
+        self._writer.writerow(entry)
+        self._current_scannr = entry["ScanNr"]
 
-    def write_file(self, psm_list: PSMList):
+    def write_file(self, psm_list: PSMList) -> None:
         """Write an entire PSMList to the PSM file."""
         with _PercolatorTabIO(
             self.filename, "wt", newline="", protein_separator=self._protein_separator
@@ -336,10 +341,10 @@ class PercolatorTabWriter(WriterBase):
             for psm in psm_list:
                 writer.writerow(self._psm_to_entry(psm))
 
-    def _psm_to_entry(self, psm: PSM):
+    def _psm_to_entry(self, psm: PSM) -> dict[str, Any]:
         """Parse PSM to Percolator Tab entry."""
         if self.style == "pin":
-            entry = {
+            entry: dict[str, Any] = {
                 "SpecId": psm.spectrum_id,
                 "Label": None if psm.is_decoy is None else -1 if psm.is_decoy else 1,
                 "Peptide": "." + re.sub(r"/\d+$", "", psm.peptidoform.proforma) + ".",
@@ -349,10 +354,8 @@ class PercolatorTabWriter(WriterBase):
             }
             if self.add_basic_features:
                 entry.update({"ChargeN": psm.peptidoform.precursor_charge, "PSMScore": psm.score})
-            try:
+            if psm.rescoring_features is not None:
                 entry.update(psm.rescoring_features)
-            except TypeError:
-                pass
         elif self.style == "pout":
             entry = {
                 "PSMId": psm.spectrum_id,
@@ -365,15 +368,15 @@ class PercolatorTabWriter(WriterBase):
                 if psm.protein_list
                 else None,
             }
+        else:
+            raise ValueError("Invalid Percolator Tab style. Should be one of {`pin`, `pout`}.")
         return entry
 
     @staticmethod
-    def _parse_existing_file(
-        filename: Union[str, Path], style: str
-    ) -> Tuple[List[str], Optional[int]]:
+    def _parse_existing_file(filename: str | Path, style: str) -> tuple[list[str], int]:
         """Parse existing Percolator Tab file to determine fieldnames and last ScanNr."""
         # Get fieldnames
-        with open(filename, "rt") as open_file:
+        with open(filename) as open_file:
             for line in open_file:
                 fieldnames = line.strip().split("\t")
                 break
@@ -388,7 +391,7 @@ class PercolatorTabWriter(WriterBase):
 
         # Get last ScanNr
         last_scannr = None
-        with open(filename, "rt") as open_file:
+        with open(filename) as open_file:
             # Read last line
             open_file.seek(0)
             last_line = None
@@ -413,25 +416,25 @@ class PercolatorTabWriter(WriterBase):
 
 
 class _PercolatorTabIO:
-    def __init__(self, *args, protein_separator="|||", **kwargs) -> None:
+    def __init__(self, *args: Any, protein_separator: str = "|||", **kwargs: Any) -> None:
         """File reader and writer for Percolator Tab files with fixed Proteins tab."""
         self._open_file = open(*args, **kwargs)
         self.protein_separator = protein_separator
 
-    def __enter__(self, *args, **kwargs) -> _PercolatorTabIO:
+    def __enter__(self) -> _PercolatorTabIO:
         return self
 
-    def __exit__(self, *args, **kwargs):
+    def __exit__(self, *args: Any) -> None:
         self.close()
 
-    def __iter__(self):
-        """Yield lines in file with Proteins tab replaced by separator."""
-        number_of_columns = None
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over lines in file with Proteins tab replaced by separator."""
+        number_of_columns = 0
         for i, line in enumerate(self._open_file):
             if i == 0:
                 number_of_columns = len(line.split("\t"))
                 yield line.lower()
-            elif i == 1 & line.startswith("DefaultDirection"):
+            elif i == 1 and line.startswith("DefaultDirection"):
                 yield line
             else:
                 r = line.strip().split("\t")
@@ -441,16 +444,16 @@ class _PercolatorTabIO:
                 line = "\t".join(row_columns) + "\n"
                 yield line
 
-    def close(self):
+    def close(self) -> None:
         self._open_file.close()
 
-    def write(self, __s: str):
+    def write(self, __s: str) -> None:
         """Write line to file with Proteins separator replaced by tab."""
         __s = __s.replace(self.protein_separator, "\t")
         self._open_file.write(__s)
 
 
-def _fieldnames_are_valid(fieldnames: List[str], style: str) -> bool:
+def _fieldnames_are_valid(fieldnames: list[str], style: str) -> bool:
     """Check if fieldnames are valid for Percolator Tab style."""
     if style == "pin":
         required_columns = ["SpecId", "Label", "ScanNr"]
@@ -465,15 +468,18 @@ def join_pout_files(
     target_filename: str | Path,
     decoy_filename: str | Path,
     output_filename: str | Path,
-):
+) -> None:
     """
     Join target and decoy Percolator Out (POUT) files into single PercolatorTab file.
 
     Parameters
     ----------
-    target_filename: str, Path
-    decoy_filename: str, Path
-    output_filename: str, Path
+    target_filename
+        Path to target POUT file.
+    decoy_filename
+        Path to decoy POUT file.
+    output_filename
+        Path to output combined POUT file.
 
     """
     target_reader = PercolatorTabReader(target_filename, score_column="score")

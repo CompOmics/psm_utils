@@ -1,19 +1,57 @@
-"""Parsers for proteomics search results from various search engines."""
+"""
+Parsers for proteomics search results from various search engines.
+
+This module provides a unified interface for reading and writing peptide-spectrum match (PSM)
+files from various proteomics search engines and analysis tools. It supports automatic file
+type detection and conversion between different formats.
+
+The module includes:
+
+- Reader and writer classes for various PSM file formats
+- Automatic file type inference from filename patterns
+- File conversion utilities
+- Progress tracking for long operations
+- Type-safe interfaces with comprehensive error handling
+
+Supported file formats include MaxQuant, MS²PIP, Percolator, mzIdentML, pepXML, and many others.
+See the documentation for a complete list of supported formats.
+
+Examples
+--------
+Read a PSM file with automatic format detection:
+
+>>> from psm_utils.io import read_file
+>>> psm_list = read_file("results.tsv")
+
+Convert between file formats:
+
+>>> from psm_utils.io import convert
+>>> convert("input.msms", "output.mzid")
+
+Write a PSMList to file:
+
+>>> from psm_utils.io import write_file
+>>> write_file(psm_list, "output.tsv")
+
+"""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Protocol, TypedDict, runtime_checkable
 
 from rich.progress import track
 
 import psm_utils.io.alphadia as alphadia
+import psm_utils.io.cbor as cbor
 import psm_utils.io.diann as diann
 import psm_utils.io.flashlfq as flashlfq
 import psm_utils.io.fragpipe as fragpipe
 import psm_utils.io.idxml as idxml
 import psm_utils.io.ionbot as ionbot
+import psm_utils.io.json as json
 import psm_utils.io.maxquant as maxquant
 import psm_utils.io.msamanda as msamanda
 import psm_utils.io.mzid as mzid
@@ -26,12 +64,22 @@ import psm_utils.io.proteoscape as proteoscape
 import psm_utils.io.sage as sage
 import psm_utils.io.tsv as tsv
 import psm_utils.io.xtandem as xtandem
-from psm_utils.io._base_classes import WriterBase
+from psm_utils.io._base_classes import ReaderBase, WriterBase
 from psm_utils.io.exceptions import PSMUtilsIOException
 from psm_utils.psm import PSM
 from psm_utils.psm_list import PSMList
 
-FILETYPES = {
+
+class FileType(TypedDict):
+    """Type definition for filetype properties."""
+
+    reader: type[ReaderBase] | None
+    writer: type[WriterBase] | None
+    extension: str
+    filename_pattern: str
+
+
+FILETYPES: dict[str, FileType] = {
     "flashlfq": {
         "reader": flashlfq.FlashLFQReader,
         "writer": flashlfq.FlashLFQWriter,
@@ -140,6 +188,18 @@ FILETYPES = {
         "extension": ".parquet",
         "filename_pattern": r"^.*\.parquet$",
     },
+    "json": {
+        "reader": json.JSONReader,
+        "writer": json.JSONWriter,
+        "extension": ".json",
+        "filename_pattern": r"^.*\.json$",
+    },
+    "cbor": {
+        "reader": cbor.CBORReader,
+        "writer": cbor.CBORWriter,
+        "extension": ".cbor",
+        "filename_pattern": r"^.*\.cbor$",
+    },
     "tsv": {  # List after more specific TSV patterns to avoid matching conflicts
         "reader": tsv.TSVReader,
         "writer": tsv.TSVWriter,
@@ -150,12 +210,24 @@ FILETYPES = {
 
 FILETYPES["sage"] = FILETYPES["sage_tsv"]  # Alias for backwards compatibility
 
-READERS = {k: v["reader"] for k, v in FILETYPES.items() if v["reader"]}
-WRITERS = {k: v["writer"] for k, v in FILETYPES.items() if v["writer"]}
+# Type-annotated lookup dictionaries for readers and writers
+READERS: dict[str, type[ReaderBase]] = {
+    k: v["reader"] for k, v in FILETYPES.items() if v["reader"]
+}
+WRITERS: dict[str, type[WriterBase]] = {
+    k: v["writer"] for k, v in FILETYPES.items() if v["writer"]
+}
 
 
-def _infer_filetype(filename: str):
-    """Infer filetype from filename."""
+@runtime_checkable
+class _SupportsStr(Protocol):
+    """Protocol to check if an object supports string conversion."""
+
+    def __str__(self) -> str: ...
+
+
+def _infer_filetype(filename: _SupportsStr) -> str:
+    """Infer filetype from filename using pattern matching."""
     for filetype, properties in FILETYPES.items():
         if re.fullmatch(properties["filename_pattern"], str(filename), flags=re.IGNORECASE):
             return filetype
@@ -163,7 +235,7 @@ def _infer_filetype(filename: str):
         raise PSMUtilsIOException("Could not infer filetype.")
 
 
-def _supports_write_psm(writer: WriterBase):
+def _supports_write_psm(writer: type[WriterBase]) -> bool:
     """Check if writer supports write_psm method."""
     with NamedTemporaryFile(delete=False) as temp_file:
         temp_file.close()
@@ -182,21 +254,32 @@ def _supports_write_psm(writer: WriterBase):
         return supports_write_psm
 
 
-def read_file(filename: str | Path, *args, filetype: str = "infer", **kwargs):
+def read_file(filename: str | Path, *args, filetype: str = "infer", **kwargs) -> PSMList:
     """
     Read PSM file into :py:class:`~psm_utils.psmlist.PSMList`.
 
     Parameters
     ----------
-    filename: str
-        Path to file.
-    filetype: str, optional
-        File type. Any PSM file type with read support. See psm_utils tag in
-        :ref:`Supported file formats`.
-    *args : tuple
-        Additional arguments are passed to the :py:class:`psm_utils.io` reader.
-    **kwargs : dict, optional
-        Additional keyword arguments are passed to the :py:class:`psm_utils.io` reader.
+    filename
+        Path to the PSM file to read.
+    filetype
+        File type specification. Can be any PSM file type with read support or "infer" to
+        automatically detect from filename pattern. See documentation for supported file formats.
+    *args
+        Additional positional arguments passed to the PSM file reader.
+    **kwargs
+        Additional keyword arguments passed to the PSM file reader.
+
+    Returns
+    -------
+    List of PSM objects parsed from the input file.
+
+    Raises
+    ------
+    PSMUtilsIOException
+        If filetype cannot be inferred or if the specified filetype is
+        unknown or not supported for reading.
+
     """
     if filetype == "infer":
         filetype = _infer_filetype(filename)
@@ -218,25 +301,34 @@ def write_file(
     filetype: str = "infer",
     show_progressbar: bool = False,
     **kwargs,
-):
+) -> None:
     """
     Write :py:class:`~psm_utils.psmlist.PSMList` to PSM file.
 
     Parameters
     ----------
-    psm_list: PSMList
-        PSM list to be written.
-    filename: str
-        Path to file.
-    filetype: str, optional
-        File type. Any PSM file type with read support. See psm_utils tag in
-        :ref:`Supported file formats`.
-    show_progressbar: bool, optional
-        Show progress bar for conversion process. (default: False)
-    *args : tuple
-        Additional arguments are passed to the :py:class:`psm_utils.io` writer.
-    **kwargs : dict, optional
-        Additional keyword arguments are passed to the :py:class:`psm_utils.io` writer.
+    psm_list
+        List of PSM objects to be written to file.
+    filename
+        Path to the output file.
+    filetype
+        File type specification. Can be any PSM file type with write support or "infer" to
+        automatically detect from filename pattern. See documentation for supported file formats.
+    show_progressbar
+        Whether to display a progress bar during the writing process.
+    *args
+        Additional positional arguments passed to the PSM file writer.
+    **kwargs
+        Additional keyword arguments passed to the PSM file writer.
+
+    Raises
+    ------
+    PSMUtilsIOException
+        If filetype cannot be inferred or if the specified filetype is
+        unknown or not supported for writing.
+    IndexError
+        If psm_list is empty and cannot provide an example PSM.
+
     """
     if filetype == "infer":
         filetype = _infer_filetype(filename)
@@ -270,29 +362,37 @@ def convert(
     input_filetype: str = "infer",
     output_filetype: str = "infer",
     show_progressbar: bool = False,
-):
+) -> None:
     """
     Convert a PSM file from one format into another.
 
     Parameters
     ----------
-    input_filename: str
-        Path to input file.
-    output_filename: str
-        Path to output file.
-    input_filetype: str, optional
-        File type. Any PSM file type with read support. See psm_utils tag in
-        :ref:`Supported file formats`.
-    output_filetype: str, optional
-        File type. Any PSM file type with write support. See psm_utils tag in
-        :ref:`Supported file formats`.
-    show_progressbar: bool, optional
-        Show progress bar for conversion process. (default: False)
+    input_filename
+        Path to the input PSM file.
+    output_filename
+        Path to the output PSM file.
+    input_filetype
+        Input file type specification. Can be any PSM file type with read support
+        or "infer" to automatically detect from filename pattern.
+        See documentation for supported file formats.
+    output_filetype
+        Output file type specification. Can be any PSM file type with write support
+        or "infer" to automatically detect from filename pattern.
+        See documentation for supported file formats.
+    show_progressbar
+        Whether to display a progress bar during the conversion process.
 
+    Raises
+    ------
+    PSMUtilsIOException
+        If input or output filetypes cannot be inferred, if the specified filetypes are
+        unknown or not supported, or if the input file is empty.
+    KeyError
+        If the specified filetype is not found in READERS or WRITERS dictionaries.
 
     Examples
     --------
-
     Convert a MaxQuant msms.txt file to a MS²PIP peprec file, while inferring
     the applicable file types from the file extensions:
 
@@ -309,19 +409,23 @@ def convert(
     ...     output_filetype="peprec"
     ... )
 
-    Note that filetypes can only be inferred for select specific file names and/or
-    extensions, such as ``msms.txt`` or ``*.peprec``.
+    Notes
+    -----
+    Filetypes can only be inferred for select specific file names and/or extensions, such as
+    ``msms.txt`` or ``*.peprec``.
 
     """
-
     # If needed, infer input and output filetypes
     if input_filetype == "infer":
         input_filetype = _infer_filetype(input_filename)
     if output_filetype == "infer":
         output_filetype = _infer_filetype(output_filename)
 
-    reader_cls = READERS[input_filetype]
-    writer_cls = WRITERS[output_filetype]
+    try:
+        reader_cls = READERS[input_filetype]
+        writer_cls = WRITERS[output_filetype]
+    except KeyError as e:
+        raise PSMUtilsIOException(f"Filetype '{e.args[0]}' unknown or not supported.") from e
 
     # Remove file if already exists to avoid appending:
     if Path(output_filename).is_file():
@@ -330,15 +434,20 @@ def convert(
     reader = reader_cls(input_filename)
 
     if _supports_write_psm(writer_cls):
-        # Setup iterator, potentially with progress bar
-        iterator = (
-            track(reader, description="[green]Converting file") if show_progressbar else reader
-        )
+        # Setup iterator, potentially with indeterminate progress bar
+        if show_progressbar:
+            # Use indeterminate progress tracking for lazy evaluation
+            iterator = track(reader, description="[green]Converting file")
+        else:
+            iterator = reader
 
         # Get example PSM and instantiate writer
         for psm in reader:
             example_psm = psm
             break
+        else:
+            raise PSMUtilsIOException("Input file is empty or does not contain valid PSMs.")
+
         writer = writer_cls(output_filename, example_psm=example_psm, mode="write")
 
         # Convert
