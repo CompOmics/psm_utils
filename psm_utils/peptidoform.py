@@ -348,7 +348,18 @@ class Peptidoform:
             try:
                 position_mass = mass.std_aa_mass[aa]
             except (AttributeError, KeyError) as e:
-                raise AmbiguousResidueException(f"Cannot resolve mass for amino acid {aa}.") from e
+                # Allow X with mass modifications to specify gap of unknown mass
+                if aa == "X":
+                    if tags and any(isinstance(tag, proforma.MassModification) for tag in tags):
+                        position_mass = 0.0
+                    else:
+                        raise AmbiguousResidueException(
+                            "Cannot resolve mass for `X` without associated mass modification."
+                        ) from e
+                else:
+                    raise AmbiguousResidueException(
+                        f"Cannot resolve mass for amino acid {aa}."
+                    ) from e
             # Fixed modifications
             if aa in fixed_rules:
                 position_mass += fixed_rules[aa]
