@@ -127,13 +127,11 @@ class PepXMLReader(ReaderBase):
 
     def _parse_psm(self, spectrum_query: dict[str, Any], search_hit: dict[str, Any]) -> PSM:
         """Parse pepXML PSM to PSM."""
-        # Build metadata dictionary properly
         metadata = {
             "num_matched_ions": str(search_hit["num_matched_ions"]),
             "tot_num_ions": str(search_hit["tot_num_ions"]),
             "num_missed_cleavages": str(search_hit["num_missed_cleavages"]),
         }
-        # Add search scores to metadata
         metadata.update(
             {
                 f"search_score_{key.lower()}": str(search_hit["search_score"][key])
@@ -147,7 +145,9 @@ class PepXMLReader(ReaderBase):
                 search_hit["modifications"],
                 spectrum_query["assumed_charge"],
             ),
-            spectrum_id=spectrum_query["spectrum"],
+            spectrum_id=spectrum_query["spectrumNativeID"]
+            if "spectrumNativeID" in spectrum_query
+            else spectrum_query["spectrum"],
             run=None,
             collection=None,
             spectrum=None,
