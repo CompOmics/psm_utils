@@ -11,6 +11,7 @@ class ECDF:
     ----------
     x : array_like
         Observations
+
     """
 
     def __init__(self, x):
@@ -101,15 +102,15 @@ def pp_plot(psm_df):
 
 def fdr_plot(psm_df, fdr_threshold):
     """Plot number of identifications in function of FDR threshold."""
-    df = (
+    target_psm_df = (
         psm_df[~psm_df["is_decoy"]]
         .reset_index(drop=True)
         .sort_values("qvalue", ascending=True)
         .copy()
     )
-    df["count"] = (~df["is_decoy"]).cumsum()
+    target_psm_df["count"] = (~target_psm_df["is_decoy"]).cumsum()
     fig = px.line(
-        df,
+        target_psm_df,
         x="qvalue",
         y="count",
         log_x=True,

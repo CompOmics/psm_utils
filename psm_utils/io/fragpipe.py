@@ -6,7 +6,6 @@ Reads the Philosopher ``psm.tsv`` file as defined on the
 
 Notes
 -----
-
 - Decoy PSMs and q-values are not returned by FragPipe.
 
 """
@@ -15,8 +14,11 @@ from __future__ import annotations
 
 import csv
 from abc import ABC
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, cast
+
+import pandas as pd
 from pyteomics.proforma import MassModification, to_proforma
 
 from psm_utils.io._base_classes import ReaderBase
@@ -26,7 +28,7 @@ from psm_utils.psm_list import PSMList
 
 set_csv_field_size_limit()
 
-RESCORING_FEATURES = [
+RESCORING_FEATURES: list[str] = [
     "Peptide Length",
     "Retention",
     "Observed Mass",
@@ -39,12 +41,17 @@ RESCORING_FEATURES = [
 
 
 class FragPipeReader(ReaderBase, ABC):
+    """Reader for FragPipe TSV format."""
+
+    use_calibrated_mz: bool
+    _mz_key: str
+
     def __init__(
         self,
-        filename,
+        filename: str | Path,
         use_calibrated_mz: bool = True,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         """
         Reader for MSFragger ``psm.tsv`` file.
@@ -56,22 +63,25 @@ class FragPipeReader(ReaderBase, ABC):
         use_calibrated_mz
             Whether to use ``Calibrated Observed M/Z`` (true) or non-calibrated ``Observed m/z``
             (false), by default True.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
-        self.filename = filename
         self.use_calibrated_mz = use_calibrated_mz
 
         self._mz_key = "Calibrated Observed M/Z" if use_calibrated_mz else "Observed M/Z"
 
-    def __iter__(self) -> Iterable[PSM]:
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
         with open(self.filename) as msms_in:
             reader = csv.DictReader(msms_in, delimiter="\t")
             for row in reader:
                 yield self._get_peptide_spectrum_match(row)
 
-    def _get_peptide_spectrum_match(self, psm_dict) -> PSM:
+    def _get_peptide_spectrum_match(self, psm_dict: dict[str, Any]) -> PSM:
         """Parse a single PSM from a FragPipe PSM file."""
         rescoring_features = {ft: psm_dict[ft] for ft in RESCORING_FEATURES if ft in psm_dict}
 
@@ -99,7 +109,7 @@ class FragPipeReader(ReaderBase, ABC):
         )
 
     @staticmethod
-    def _parse_peptidoform(peptide: str, modifications: str, charge: Optional[str]) -> str:
+    def _parse_peptidoform(peptide: str, modifications: str, charge: str | None) -> str:
         """Parse the peptidoform from the modified peptide, peptide, and charge columns."""
         sequence = [(aa, []) for aa in peptide]
         n_term, c_term = [], []
@@ -120,14 +130,14 @@ class FragPipeReader(ReaderBase, ABC):
 
     @staticmethod
     def _parse_spectrum_id(spectrum: str) -> str:
-        """Extract scan number from spectrum ID: ``(file name).(scan #).(scan #).(charge).``"""
+        """Extract scan number from spectrum ID: ``(file name).(scan #).(scan #).(charge).``."""
         try:
             return spectrum.split(".")[-2]
         except IndexError:
             return spectrum
 
     @staticmethod
-    def _parse_protein_list(razor_protein: str, mapped_proteins) -> list[str]:
+    def _parse_protein_list(razor_protein: str, mapped_proteins: str | None) -> list[str]:
         """Combine razor protein and mapped proteins into a single list."""
         if mapped_proteins:
             mapped_proteins_list = mapped_proteins.split(", ")
@@ -147,11 +157,14 @@ class FragPipeReader(ReaderBase, ABC):
             return Path(spectrum_file).stem
 
     @classmethod
-    def from_dataframe(cls, dataframe) -> PSMList:
-        """Create a PSMList from a pandas DataFrame."""
+    def from_dataframe(cls, dataframe: pd.DataFrame) -> PSMList:
+        """Create a PSMList from a Pandas DataFrame."""
+        # Create a temporary reader instance to access the parsing method
+        temp_reader = cls(filename="")
+
         return PSMList(
-            ptm_list=[
-                cls._get_peptide_spectrum_match(cls(""), entry)
+            psm_list=[
+                temp_reader._get_peptide_spectrum_match(cast(dict[str, Any], entry))
                 for entry in dataframe.to_dict(orient="records")
             ]
         )

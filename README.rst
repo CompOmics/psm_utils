@@ -90,10 +90,12 @@ Supported file formats
  File format                                                                                                           psm_utils tag            Read support    Write support   Comments
 ===================================================================================================================== ======================== =============== =============== ==========
  `AlphaDIA precursors TSV <https://alphadia.readthedocs.io/en/latest/quickstart.html#output-files>`_                   ``alphadia``             ✅              ❌
+ `CBOR <https://psm-utils.readthedocs.io/en/stable/api/psm_utils.io#module-psm_utils.io.cbor>`_                        ``cbor``                 ✅              ✅
  `DIA-NN TSV <https://github.com/vdemichev/DiaNN#output>`_                                                             ``diann``                ✅              ❌
  `FlashLFQ generic TSV <https://github.com/smith-chem-wisc/FlashLFQ/wiki/Identification-Input-Formats>`_               ``flashlfq``             ✅              ✅
  `FragPipe PSM TSV <https://fragpipe.nesvilab.org/docs/tutorial_fragpipe_outputs.html#psmtsv/>`_                       ``fragpipe``             ✅              ❌
  `ionbot CSV <https://ionbot.cloud/>`_                                                                                 ``ionbot``               ✅              ❌
+ `JSON <https://psm-utils.readthedocs.io/en/stable/api/psm_utils.io#module-psm_utils.io.json>`_                        ``json``                 ✅              ✅
  `OpenMS idXML <https://www.openms.de/>`_                                                                              ``idxml``                ✅              ✅                Requires the optional ``openms`` dependency (``pip install psm-utils[idxml]``)
  `MaxQuant msms.txt <https://www.maxquant.org/>`_                                                                      ``msms``                 ✅              ❌
  `MS Amanda CSV <https://ms.imp.ac.at/?goto=msamanda>`_                                                                ``msamanda``             ✅              ❌
