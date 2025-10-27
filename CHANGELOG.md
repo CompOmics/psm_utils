@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - ✨ `io`: Read/write support for **JSON** and **CBOR** formats. (#125)
+- ✨ `io.percolator`: Added support for Comet-style N- and C-terminal modifications (#121 and #131 by @ATPs)
 
 ### Changed
 
