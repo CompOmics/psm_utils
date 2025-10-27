@@ -147,13 +147,17 @@ class PercolatorTabReader(ReaderBase):
         """Parse Percolator TSV peptide notation to Peptidoform."""
         # Remove leading and trailing amino acids (e.g., R.PEPTIDE.S -> PEPTIDE)
         match = re.match(r"^(?:[A-Z-])?\.(.+)\.(?:[A-Z-])?$", percolator_peptide)
-        peptidoform = match[1] if match else percolator_peptide
-        # Handle Comet's n-terminal modification format: n[42.0106]PEPTIDE
-        peptidoform = re.sub(r'^n\[([+-]?[\w\.]*?)\]', r'[\1]-', peptidoform)
-        
+        peptidoform: str = match[1] if match else percolator_peptide
+
+        # Handle Comet's n-terminal modification format: n[42.0106]PEPTIDE -> [42.0106]-PEPTIDE
+        peptidoform = re.sub(r"^n\[([+-]?[\w\.]*?)\]", r"[\1]-", peptidoform)
+
+        # Handle Comet's c-terminal modification format: PEPTIDEc[-0.9840] -> PEPTIDE-[-0.9840]
+        peptidoform = re.sub(r"c\[([+-]?[\w\.]*?)\]$", r"-[\1]", peptidoform)
+
         # Ensure positive values inside square brackets have a '+' sign
-        peptidoform = re.sub(r'\[(\d+[\.]*\d*)]', r'[+\1]', peptidoform)
-        
+        peptidoform = re.sub(r"\[(\d+[\.]*\d*)]", r"[+\1]", peptidoform)
+
         if charge:
             peptidoform += f"/{charge}"
         return Peptidoform(peptidoform)
