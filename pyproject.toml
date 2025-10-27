@@ -2,7 +2,8 @@
 name = "psm-utils"
 description = "Common utilities for parsing and handling peptide-spectrum matches and search engine results."
 readme = "README.rst"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 keywords = ["proteomics", "peptide", "spectrum", "identification", "parsing"]
 authors = [
     { name = "Ralf Gabriels", email = "ralf@gabriels.dev" },
@@ -11,7 +12,6 @@ authors = [
 ]
 classifiers = [
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Scientific/Engineering :: Bio-Informatics",

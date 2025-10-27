@@ -28,4 +28,4 @@ jobs:
         run: uv run --isolated --with *.whl python -c "import psm_utils; print('Successfully imported built package.')"
 
       - name: Publish to PyPI
-        uses: uv publish
+        run: uv publish
