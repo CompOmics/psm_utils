@@ -193,7 +193,7 @@ class TestPeptidoform:
 
         with pytest.raises(
             AmbiguousResidueException,
-            match="Cannot resolve mass for `X` without associated mass modification",
+            match="Cannot resolve mass for `X` without associated modification",
         ):
             _ = peptidoform.sequential_theoretical_mass
 
