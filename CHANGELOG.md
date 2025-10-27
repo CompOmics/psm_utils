@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - ♻️ `stats.qvalues`: Set the **regular target–decoy formula** explicitly in Pyteomics when `remove_decoy=False` and apply the **+1 correction** (probability that the first excluded decoy out-scores the threshold PSM). This produces less overly conservative q-values (e.g., on `example_files/msms.txt`). (#128)
+- ♻️ `io.pepxml`: Refactor spectrum naming logic to prefer `spectrumNativeID` when available
 - 🏷️ **Typing**: Adopted full **MyPy** typing across the codebase. (#125)
 - 👷 **CI**: Replaced file-hash–based tests for `io.idxml` with unit tests; added formatting checks. (#125)
 
