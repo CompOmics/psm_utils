@@ -237,9 +237,19 @@ class Peptidoform:
             try:
                 position_comp = mass.std_aa_comp[aa].copy()
             except (AttributeError, KeyError) as e:
-                raise AmbiguousResidueException(
-                    f"Cannot resolve composition for amino acid {aa}."
-                ) from e
+                # Allow X with modifications to specify gap with known composition
+                if aa == "X":
+                    if tags and all(hasattr(tag, "composition") for tag in tags):
+                        position_comp = mass.Composition()
+                    else:
+                        raise AmbiguousResidueException(
+                            "Cannot resolve composition for `X` without associated formula "
+                            "modification."
+                        ) from e
+                else:
+                    raise AmbiguousResidueException(
+                        f"Cannot resolve composition for amino acid {aa}."
+                    ) from e
             # Fixed modifications
             if aa in fixed_rules:
                 position_comp += fixed_rules[aa]
@@ -348,7 +358,18 @@ class Peptidoform:
             try:
                 position_mass = mass.std_aa_mass[aa]
             except (AttributeError, KeyError) as e:
-                raise AmbiguousResidueException(f"Cannot resolve mass for amino acid {aa}.") from e
+                # Allow X with modifications to specify gap of unknown mass
+                if aa == "X":
+                    if tags and all(hasattr(tag, "mass") for tag in tags):
+                        position_mass = 0.0
+                    else:
+                        raise AmbiguousResidueException(
+                            "Cannot resolve mass for `X` without associated modification."
+                        ) from e
+                else:
+                    raise AmbiguousResidueException(
+                        f"Cannot resolve mass for amino acid {aa}."
+                    ) from e
             # Fixed modifications
             if aa in fixed_rules:
                 position_mass += fixed_rules[aa]
