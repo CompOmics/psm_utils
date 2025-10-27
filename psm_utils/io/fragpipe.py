@@ -19,9 +19,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import pandas as pd
+from pyteomics.proforma import MassModification, to_proforma  # type: ignore[import]
 
 from psm_utils.io._base_classes import ReaderBase
 from psm_utils.io._utils import set_csv_field_size_limit
+from psm_utils.io.exceptions import InvalidModificationError
 from psm_utils.psm import PSM
 from psm_utils.psm_list import PSMList
 
@@ -86,7 +88,7 @@ class FragPipeReader(ReaderBase, ABC):
 
         return PSM(
             peptidoform=self._parse_peptidoform(
-                psm_dict["Modified Peptide"], psm_dict["Peptide"], psm_dict["Charge"]
+                psm_dict["Peptide"], psm_dict["Assigned Modifications"], psm_dict["Charge"]
             ),
             spectrum_id=self._parse_spectrum_id(psm_dict["Spectrum"]),
             run=self._parse_run(psm_dict["Spectrum File"]),
@@ -108,22 +110,47 @@ class FragPipeReader(ReaderBase, ABC):
         )
 
     @staticmethod
-    def _parse_peptidoform(mod_peptide: str, peptide: str, charge: str | None) -> str:
+    def _parse_peptidoform(peptide: str, modifications: str, charge: str | None) -> str:
         """Parse the peptidoform from the modified peptide, peptide, and charge columns."""
-        if mod_peptide:
-            peptide = mod_peptide
-            # N-terminal modification
-            if peptide.startswith("n"):
-                peptide = peptide[1:]
-                # A hyphen needs to be added after the N-terminal modification, thus after the ]
-                peptide = peptide.replace("]", "]-", 1)
-            # C-terminal modification
-            if peptide.endswith("]"):
-                if "c[" in peptide:
-                    peptide = peptide.replace("c[", "-[", 1)
-        if charge:
-            peptide += f"/{int(float(charge))}"
-        return peptide
+        sequence: list[tuple[str, list[MassModification]]] = [(aa, []) for aa in peptide]
+        n_term: list[MassModification] = []
+        c_term: list[MassModification] = []
+
+        if not modifications:
+            return to_proforma(sequence, n_term=n_term, c_term=c_term, charge_state=charge)
+
+        for mod_entry in modifications.split(", "):
+            if not mod_entry:
+                continue
+
+            parsed_mod_entry: list[str] = mod_entry[:-1].split("(")
+            if not len(parsed_mod_entry) == 2:
+                raise InvalidModificationError(
+                    f"Could not parse modification entry '{mod_entry}'."
+                )
+            site: str = parsed_mod_entry[0]
+            mass: float = float(parsed_mod_entry[1])
+
+            if site == "N-term":
+                n_term.append(MassModification(mass))
+            elif site == "C-term":
+                c_term.append(MassModification(mass))
+            else:
+                residue: str = site[-1]
+                idx: int = int(site[:-1]) - 1
+                if idx < 0 or idx >= len(sequence):
+                    raise InvalidModificationError(
+                        f"Modification position {idx + 1} is out of bounds for peptide of "
+                        f"length {len(sequence)}."
+                    )
+                if sequence[idx][0] != residue:
+                    raise InvalidModificationError(
+                        f"Modification site residue '{residue}' does not match "
+                        f"peptide sequence residue '{sequence[idx][0]}' at position {idx + 1}."
+                    )
+                sequence[idx][1].append(MassModification(mass))
+
+        return to_proforma(sequence, n_term=n_term, c_term=c_term, charge_state=charge)
 
     @staticmethod
     def _parse_spectrum_id(spectrum: str) -> str:

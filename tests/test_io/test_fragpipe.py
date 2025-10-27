@@ -42,16 +42,14 @@ class TestFragpipeReader:
 
     def test__parse_peptidoform(self):
         test_cases = [
-            (("LHM[147]TNQNMEKc[17]", "LHMTNQNMEK", "3"), "LHM[147]TNQNMEK-[17]/3"),
-            (("n[43]ANIAVQR", "ANIAVQR", "2"), "[43]-ANIAVQR/2"),
-            ((None, "IPAVTYPK", "2"), "IPAVTYPK/2"),
-            (("", "IPAVTYPK", "2"), "IPAVTYPK/2"),
-            (("", "IPAVTYPK", 2), "IPAVTYPK/2"),
+            (("LHMTNQNMEK", "3M(15.994915), C-term(17.034480)", "3"), "LHM[+15.9949]TNQNMEK-[+17.0345]/3"),
+            (("ANIAVQR", "N-term(42.0106)", "2"), "[+42.0106]-ANIAVQR/2"),
+            (("IPAVTYPK", "", "2"), "IPAVTYPK/2"),
         ]
 
         reader = FragPipeReader("./tests/test_data/test_fragpipe.tsv")
-        for (peptide, modified_peptide, charge), expected in test_cases:
-            assert reader._parse_peptidoform(peptide, modified_peptide, charge) == expected
+        for (peptide, modifications, charge), expected in test_cases:
+            assert reader._parse_peptidoform(peptide, modifications, charge) == expected
 
     def test__parse_spectrum_id(self):
         test_cases = [
