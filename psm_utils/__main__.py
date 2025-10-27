@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    """Run the main entry point for the psm_utils CLI."""
     logging.basicConfig(
         level="NOTSET",
         format="%(message)s",
@@ -47,6 +48,7 @@ def main():
 
 @click.group()
 def cli():
+    """Command line interface for psm_utils."""
     pass
 
 
