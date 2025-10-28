@@ -29,12 +29,11 @@ from psm_utils.psm import PSM
 from psm_utils.psm_list import PSMList
 
 try:
-    import cbor2
+    import cbor2  # type: ignore[import]
+
+    _has_cbor2 = True
 except ImportError:
-    raise ImportError(
-        "The cbor2 package is required to use the CBOR reader/writer. "
-        "Install it with: pip install cbor2"
-    )
+    _has_cbor2 = False
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +56,18 @@ class CBORReader(ReaderBase):
 
         """
         super().__init__(filename, *args, **kwargs)
+        if not _has_cbor2:
+            raise ImportError(
+                "The cbor2 package is required to use the CBOR reader/writer. "
+                "Install it with: pip install cbor2"
+            )
 
     def __iter__(self):
         """Iterate over file and return PSMs one-by-one."""
         with open(self.filename, "rb") as open_file:
             try:
-                data = cbor2.load(open_file)
-            except cbor2.CBORDecodeError as e:
+                data = cbor2.load(open_file)  # type: ignore[attr-defined]
+            except cbor2.CBORDecodeError as e:  # type: ignore[attr-defined]
                 raise PSMUtilsIOException(f"Could not decode CBOR file: {e}") from e
 
             if not isinstance(data, list):
@@ -122,6 +126,11 @@ class CBORWriter(WriterBase):
 
         """
         super().__init__(filename, *args, **kwargs)
+        if not _has_cbor2:
+            raise ImportError(
+                "The cbor2 package is required to use the CBOR reader/writer. "
+                "Install it with: pip install cbor2"
+            )
         self._psm_cache: list[dict[str, Any]] = []
 
     def __enter__(self) -> CBORWriter:
@@ -155,6 +164,6 @@ class CBORWriter(WriterBase):
     def _flush(self):
         """Write the cached PSMs to the CBOR file."""
         with open(self.filename, "wb") as open_file:
-            cbor2.dump(self._psm_cache, open_file)
+            cbor2.dump(self._psm_cache, open_file)  # type: ignore[attr-defined]
 
         self._psm_cache = []

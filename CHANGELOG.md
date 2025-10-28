@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0.post1] - 2025-10-28
+
+### Fixed
+
+- 🐛 `io.cbor`: Fixed lazy import of optional cbor2 package.
+
 ## [1.5.0] - 2025-10-27
 
 ### Added
