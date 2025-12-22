@@ -27,6 +27,12 @@ STANDARD_SEARCHENGINE_SCORES = [
     "mzFidelity",
 ]
 
+KNOWN_METADATA_KEYS = [
+    "num_matched_ions",
+    "tot_num_ions",
+    "num_missed_cleavages",
+]
+
 
 class PepXMLReader(ReaderBase):
     """Reader for pepXML PSM files."""
@@ -127,17 +133,27 @@ class PepXMLReader(ReaderBase):
 
     def _parse_psm(self, spectrum_query: dict[str, Any], search_hit: dict[str, Any]) -> PSM:
         """Parse pepXML PSM to PSM."""
-        metadata = {
-            "num_matched_ions": str(search_hit["num_matched_ions"]),
-            "tot_num_ions": str(search_hit["tot_num_ions"]),
-            "num_missed_cleavages": str(search_hit["num_missed_cleavages"]),
-        }
+        # Build metadata from optional search hit fields
+        metadata = {key: str(search_hit[key]) for key in KNOWN_METADATA_KEYS if key in search_hit}
+
+        # Add all search scores to metadata
         metadata.update(
             {
-                f"search_score_{key.lower()}": str(search_hit["search_score"][key])
-                for key in search_hit["search_score"]
+                f"search_score_{key.lower()}": str(value)
+                for key, value in search_hit["search_score"].items()
             }
         )
+
+        # Build provenance data from optional spectrum query fields
+        provenance_data = {
+            k: str(v)
+            for k, v in {
+                "pepxml_index": spectrum_query.get("index"),
+                "start_scan": spectrum_query.get("start_scan"),
+                "end_scan": spectrum_query.get("end_scan"),
+            }.items()
+            if v is not None
+        }
 
         return PSM(
             peptidoform=self._parse_peptidoform(
@@ -145,14 +161,12 @@ class PepXMLReader(ReaderBase):
                 search_hit["modifications"],
                 spectrum_query["assumed_charge"],
             ),
-            spectrum_id=spectrum_query["spectrumNativeID"]
-            if "spectrumNativeID" in spectrum_query
-            else spectrum_query["spectrum"],
+            spectrum_id=spectrum_query.get("spectrumNativeID", spectrum_query.get("spectrum")),
             run=None,
             collection=None,
             spectrum=None,
             is_decoy=None,
-            score=search_hit["search_score"][self.score_key],
+            score=search_hit["search_score"].get(self.score_key, None),
             qvalue=None,
             pep=None,
             precursor_mz=mass_to_mz(
@@ -160,14 +174,10 @@ class PepXMLReader(ReaderBase):
             ),
             retention_time=spectrum_query.get("retention_time_sec"),
             ion_mobility=spectrum_query.get("ion_mobility"),
-            protein_list=[p["protein"] for p in search_hit["proteins"]],
-            rank=search_hit["hit_rank"],
+            protein_list=[p["protein"] for p in search_hit.get("proteins", [])],
+            rank=search_hit.get("hit_rank", None),
             source=None,
-            provenance_data={
-                "pepxml_index": str(spectrum_query["index"]),
-                "start_scan": str(spectrum_query["start_scan"]),
-                "end_scan": str(spectrum_query["end_scan"]),
-            },
+            provenance_data=provenance_data,
             metadata=metadata,
             rescoring_features={},
         )
