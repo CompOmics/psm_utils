@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2025-12-22
+
+### Fixed
+
+- `io.idxml`: Fix compatibility with pyOpenMS 3.5+ for PeptideIdentificationList handling (also see OpenMS/OpenMS#8552).
+- `io.percolator`: Fix missing ScanNr values when using `write_file` (fixes compomics/ms2rescore#235).
+- `io.percolator`: Fix missing style argument when checking whether `PercolatorTabWriter` supports `write_psm`.
+- `io.pepxml`: Fix robustness of `PepXMLReader` against missing params in file.
+
 ## [1.5.0.post1] - 2025-10-28
 
 ### Fixed
