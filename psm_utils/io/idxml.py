@@ -34,8 +34,11 @@ try:
     import pyopenms as oms  # type: ignore[import]
 
     _has_openms = True
+    # Check if we have pyOpenMS 3.5+ with PeptideIdentificationList
+    _has_peptide_id_list = hasattr(oms, "PeptideIdentificationList")
 except ImportError:
     _has_openms = False
+    _has_peptide_id_list = False
     oms = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
@@ -157,8 +160,17 @@ class IdXMLReader(ReaderBase):
 
         """
         protein_ids: Any = []  # list[oms.ProteinIdentification]
-        peptide_ids: Any = []  # list[oms.PeptideIdentification]
-        oms.IdXMLFile().load(str(self.filename), protein_ids, peptide_ids)  # type: ignore
+        # In pyOpenMS 3.5+, peptide_ids must be a PeptideIdentificationList
+        if _has_peptide_id_list:
+            peptide_ids: Any = oms.PeptideIdentificationList()  # type: ignore
+        else:
+            peptide_ids = []  # list[oms.PeptideIdentification] for pyOpenMS <3.5
+
+        # Load the idXML file - the lists will be populated by pyOpenMS
+        idxml_file = oms.IdXMLFile()  # type: ignore
+        # Ensure filename is a string, not a Path object
+        filename_str: str = str(self.filename)
+        idxml_file.load(filename_str, protein_ids, peptide_ids)
 
         if len(protein_ids) == 0:
             raise IdXMLReaderEmptyListException(
@@ -564,7 +576,10 @@ class IdXMLWriter(WriterBase):
 
             peptide_id.setHits(updated_peptide_hits)
 
-        oms.IdXMLFile().store(str(self.filename), self.protein_ids, self.peptide_ids)  # type: ignore
+        # Store the idXML file
+        idxml_file = oms.IdXMLFile()  # type: ignore
+        filename_str: str = str(self.filename)
+        idxml_file.store(filename_str, self.protein_ids, self.peptide_ids)
 
     def _update_peptide_hit(self, peptide_hit: Any, psm: PSM) -> None:
         """Inplace update of PeptideHit with novel predicted features information from PSM."""
@@ -594,7 +609,11 @@ class IdXMLWriter(WriterBase):
     ) -> None:
         """Create ProteinIdentification and PeptideIdentification objects for a single collection."""
         self.protein_ids = [oms.ProteinIdentification()]  # type: ignore
-        self.peptide_ids = []
+        # In pyOpenMS 3.5+, peptide_ids must be a PeptideIdentificationList
+        if _has_peptide_id_list:
+            self.peptide_ids = oms.PeptideIdentificationList()  # type: ignore
+        else:
+            self.peptide_ids = []  # list[oms.PeptideIdentification] for pyOpenMS <3.5
 
         # Set msrun filename with spectra_data meta value
         msrun_reference = [str(run).encode() for run in runs.keys()]
@@ -617,14 +636,19 @@ class IdXMLWriter(WriterBase):
                 # Create PeptideHits
                 peptide_hits = [self._create_peptide_hit(psm) for psm in psms]
                 peptide_id.setHits(peptide_hits)
-                self.peptide_ids.append(peptide_id)
+                # Use push_back for pyOpenMS 3.5+, append for older versions
+                if _has_peptide_id_list:
+                    self.peptide_ids.push_back(peptide_id)  # type: ignore
+                else:
+                    self.peptide_ids.append(peptide_id)  # type: ignore[union-attr]
 
         # Create protein hits
         self._create_protein_hits(protein_list)
 
         # Write idXML file
-        filename = "/".join(filter(None, [collection, str(self.filename)]))
-        oms.IdXMLFile().store(filename, self.protein_ids, self.peptide_ids)  # type: ignore
+        filename: str = "/".join(filter(None, [collection, str(self.filename)]))
+        idxml_file = oms.IdXMLFile()  # type: ignore
+        idxml_file.store(filename, self.protein_ids, self.peptide_ids)  # type: ignore
 
     def _create_peptide_identification(
         self,

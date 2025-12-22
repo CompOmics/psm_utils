@@ -448,7 +448,8 @@ def from_dataframe(peprec_df: pd.DataFrame) -> PSMList:
     """
     psm_list = []
     for _, row in peprec_df.iterrows():
-        entry = _PeprecEntry(**row.to_dict())
+        row_dict = {str(k): v for k, v in row.to_dict().items()}
+        entry = _PeprecEntry(**row_dict)
         psm_list.append(PeptideRecordReader._entry_to_psm(entry, filename=""))
     return PSMList(psm_list=psm_list)
 
