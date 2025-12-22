@@ -342,8 +342,10 @@ class PercolatorTabWriter(WriterBase):
                 f, fieldnames=self._columns, delimiter="\t", extrasaction="ignore"
             )
             writer.writeheader()
-            for psm in psm_list:
-                writer.writerow(self._psm_to_entry(psm))
+            for i, psm in enumerate(psm_list):
+                entry = self._psm_to_entry(psm)
+                entry["ScanNr"] = i
+                writer.writerow(entry)
 
     def _psm_to_entry(self, psm: PSM) -> dict[str, Any]:
         """Parse PSM to Percolator Tab entry."""
