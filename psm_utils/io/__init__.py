@@ -241,8 +241,16 @@ def _supports_write_psm(writer: type[WriterBase]) -> bool:
         temp_file.close()
         Path(temp_file.name).unlink()
         example_psm = PSM(peptidoform="ACDE", spectrum_id="0")
+
+        # Prepare writer-specific kwargs for writers that need them
+        writer_kwargs = {}
+        if writer == percolator.PercolatorTabWriter:
+            writer_kwargs["style"] = "pin"
+
         try:
-            with writer(temp_file.name, example_psm=example_psm) as writer_instance:
+            with writer(
+                temp_file.name, example_psm=example_psm, **writer_kwargs
+            ) as writer_instance:
                 writer_instance.write_psm(example_psm)
         except NotImplementedError:
             supports_write_psm = False
