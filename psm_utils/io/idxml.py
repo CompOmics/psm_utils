@@ -640,7 +640,7 @@ class IdXMLWriter(WriterBase):
                 if _has_peptide_id_list:
                     self.peptide_ids.push_back(peptide_id)  # type: ignore
                 else:
-                    self.peptide_ids.append(peptide_id)  # type: ignore[attr-defined]
+                    self.peptide_ids.append(peptide_id)  # type: ignore[union-attr]
 
         # Create protein hits
         self._create_protein_hits(protein_list)
