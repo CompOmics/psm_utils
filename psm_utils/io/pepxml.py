@@ -73,6 +73,8 @@ class PepXMLReader(ReaderBase):
         # Get scores from first PSM
         with pepxml.read(str(self.filename)) as reader:
             for spectrum_query in reader:
+                if "search_hit" not in spectrum_query:
+                    continue
                 score_keys = spectrum_query["search_hit"][0]["search_score"].keys()
                 break
             else:
