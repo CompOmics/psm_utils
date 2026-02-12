@@ -91,16 +91,18 @@ class StreamlitPageStats(StreamlitPage):
                 self.state["reverse"] = row[0].radio(
                     "Score type: order",
                     options=[True, False],
-                    format_func=lambda x: "Higher score is better"
-                    if x
-                    else "Lower score is better",
+                    format_func=lambda x: (
+                        "Higher score is better" if x else "Lower score is better"
+                    ),
                 )
                 self.state["log_scale"] = row[1].radio(
                     "Score type: scale",
                     options=[False, True],
-                    format_func=lambda x: "Logarithmic scale (e.g., e-value)"
-                    if x
-                    else "Linear scale (e.g., Andromeda score)",
+                    format_func=lambda x: (
+                        "Logarithmic scale (e.g., e-value)"
+                        if x
+                        else "Linear scale (e.g., Andromeda score)"
+                    ),
                     help=(
                         """
                         Some search engine scores, mostly e-value-like scores, require a
