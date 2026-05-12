@@ -119,7 +119,7 @@ class FragPipeReader(ReaderBase, ABC):
         if not modifications:
             return to_proforma(sequence, n_term=n_term, c_term=c_term, charge_state=charge)
 
-        for mod_entry in modifications.split(", "):
+        for mod_entry in (e.strip() for e in modifications.split(",")):
             if not mod_entry:
                 continue
 
