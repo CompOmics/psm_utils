@@ -28,11 +28,32 @@ class TestPercolatorTabReader:
 
     def test_parse_peptidoform(self):
         test_cases = [
+            # Basic cases
             (("ACDEFGHR", None), "ACDEFGHR"),
             (("K.ACDEFGHR.I", 1), "ACDEFGHR/1"),
             (("K.ACDEFGHR.-", 2), "ACDEFGHR/2"),
             (("-.ACDEFGHR.I", 3), "ACDEFGHR/3"),
             (("-.ACDEFGHR.-", None), "ACDEFGHR"),
+            # N-terminal modifications
+            (("-.n[42.0106]ACDEFGHR.-", None), "[+42.0106]-ACDEFGHR"),
+            (("n[42.0106]ACDEFGHR", None), "[+42.0106]-ACDEFGHR"),  # Without flanking
+            (("-.n[43]ACDEFGHR.-", 2), "[+43]-ACDEFGHR/2"),  # Integer mass
+            # C-terminal modifications
+            (("-.ACDEFGHRc[-0.9840].-", None), "ACDEFGHR-[-0.984]"),
+            (("ACDEFGHRc[-0.9840]", None), "ACDEFGHR-[-0.984]"),  # Without flanking
+            (("-.ACDEFGHRc[17.0265].-", 2), "ACDEFGHR-[+17.0265]/2"),  # Positive C-term
+            # Internal modifications
+            (("-.ACDEFM[15.9949]GHR.-", None), "ACDEFM[+15.9949]GHR"),
+            (("-.ACDEM[-18.010565]GHR.-", None), "ACDEM[-18.010565]GHR"),  # Negative internal
+            (("-.AC[57.021]DEFGHR.-", None), "AC[+57.021]DEFGHR"),  # Carbamidomethyl
+            # Multiple modifications
+            (("-.n[43]ACDEFM[16]GHR.-", None), "[+43]-ACDEFM[+16]GHR"),  # N-term + internal
+            (("-.ACDEFM[16]GHRc[-1].-", None), "ACDEFM[+16]GHR-[-1]"),  # Internal + C-term
+            (("-.n[42]ACDEFM[16]GHRc[-1].-", 2), "[+42]-ACDEFM[+16]GHR-[-1]/2"),  # All three
+            (("-.AC[57]DEM[16]GHK.-", None), "AC[+57]DEM[+16]GHK"),  # Multiple internal
+            # Already has '+' sign (should not add another)
+            (("-.ACDEFM[+15.9949]GHR.-", None), "ACDEFM[+15.9949]GHR"),
+            (("-.n[+42.0106]ACDEFGHR.-", None), "[+42.0106]-ACDEFGHR"),
         ]
         for test_in, expected_out in test_cases:
             assert expected_out == PercolatorTabReader._parse_peptidoform(*test_in).proforma

@@ -136,8 +136,134 @@ class TestPeptidoform:
             peptidoform.apply_fixed_modifications()
             assert peptidoform.proforma == expected_out
 
+    def test_sequential_theoretical_mass(self):
+        """Test sequential theoretical mass calculation."""
+        test_cases = [
+            # Simple peptide: (proforma_str, number_of_residues)
+            ("ACDEK", 5),  # N-term, A, C, D, E, K, C-term = 7 total
+            # Peptide with modifications
+            ("[Acetyl]-ACDEK", 5),
+            ("AC[Carbamidomethyl]DEK", 5),
+            # Peptide with X and mass modification (gap of known mass)
+            ("ACX[+100.5]DEK", 6),  # A, C, X, D, E, K
+            ("X[+50.0]ACDE", 5),  # X, A, C, D, E
+            # Multiple X residues with mass modifications
+            ("X[+100.0]ACX[+200.0]DE", 6),  # X, A, C, X, D, E
+        ]
+
+        for proforma_str, num_residues in test_cases:
+            peptidoform = Peptidoform(proforma_str)
+            seq_mass = peptidoform.sequential_theoretical_mass
+
+            # Check that we get the right number of elements (N-term + residues + C-term)
+            expected_length = num_residues + 2  # +2 for N-term and C-term
+            assert len(seq_mass) == expected_length, (
+                f"Failed for {proforma_str}: expected {expected_length}, got {len(seq_mass)}"
+            )
+
+            # Check that all values are floats
+            assert all(isinstance(m, float) for m in seq_mass), f"Failed for {proforma_str}"
+
+            # Check that sum matches theoretical mass (excluding charge)
+            total_mass = sum(seq_mass)
+            expected_total = peptidoform.theoretical_mass
+            assert abs(total_mass - expected_total) < 1e-6, (
+                f"Failed for {proforma_str}: {total_mass} != {expected_total}"
+            )
+
+    def test_sequential_theoretical_mass_with_x_gap(self):
+        """Test sequential theoretical mass with X representing a gap of known mass."""
+        # X[+100.5] should contribute 100.5 to the mass
+        peptidoform = Peptidoform("ACX[+100.5]DE")
+        seq_mass = peptidoform.sequential_theoretical_mass
+
+        # seq_mass should be: [N-term, A, C, X+100.5, D, E, C-term]
+        assert len(seq_mass) == 7
+
+        # The X residue (index 3) should have mass 0.0 + 100.5 = 100.5
+        x_mass = seq_mass[3]
+        assert abs(x_mass - 100.5) < 1e-6, f"Expected 100.5, got {x_mass}"
+
+    def test_sequential_theoretical_mass_with_x_no_modification_fails(self):
+        """Test that X without modification fails for sequential_theoretical_mass."""
+        from psm_utils.peptidoform import AmbiguousResidueException
+
+        # X without any modification should fail for mass calculation
+        peptidoform = Peptidoform("ACXDE")
+
+        with pytest.raises(
+            AmbiguousResidueException,
+            match="Cannot resolve mass for `X` without associated modification",
+        ):
+            _ = peptidoform.sequential_theoretical_mass
+
+    def test_sequential_composition(self):
+        """Test sequential composition calculation."""
+        from pyteomics import mass
+
+        test_cases = [
+            # Simple peptide: (proforma_str, number_of_residues)
+            ("ACDEK", 5),  # N-term, A, C, D, E, K, C-term = 7 total
+            # Peptide with modifications
+            ("[Acetyl]-ACDEK", 5),
+            ("AC[Carbamidomethyl]DEK", 5),
+            # Peptide with terminal modifications
+            ("[Acetyl]-ACDEK-[Amidated]", 5),
+        ]
+
+        for proforma_str, num_residues in test_cases:
+            peptidoform = Peptidoform(proforma_str)
+            seq_comp = peptidoform.sequential_composition
+
+            # Check that we get the right number of elements (N-term + residues + C-term)
+            expected_length = num_residues + 2  # +2 for N-term and C-term
+            assert len(seq_comp) == expected_length, (
+                f"Failed for {proforma_str}: expected {expected_length}, got {len(seq_comp)}"
+            )
+
+            # Check that all values are Composition objects
+            assert all(isinstance(c, mass.Composition) for c in seq_comp), (
+                f"Failed for {proforma_str}"
+            )
+
+            # Check that sum matches full composition
+            total_comp = mass.Composition()
+            for comp in seq_comp:
+                total_comp += comp
+            assert total_comp == peptidoform.composition, f"Failed for {proforma_str}"
+
+    def test_sequential_composition_with_x_gap(self):
+        """Test sequential composition with X representing a gap of unknown composition."""
+        from pyteomics import mass
+
+        # X with formula modification should allow empty base composition
+        peptidoform = Peptidoform("ACX[Formula:C6H12O6]DE")
+        seq_comp = peptidoform.sequential_composition
+
+        # seq_comp should be: [N-term, A, C, X+composition, D, E, C-term]
+        assert len(seq_comp) == 7
+
+        # The X residue (index 3) should have composition C6H12O6
+        x_comp = seq_comp[3]
+        expected_comp = mass.Composition({"C": 6, "H": 12, "O": 6})
+        assert x_comp == expected_comp, f"Expected {expected_comp}, got {x_comp}"
+
+    def test_sequential_composition_with_x_mass_only_fails(self):
+        """Test that X with only mass modification fails for sequential_composition."""
+        from psm_utils.peptidoform import AmbiguousResidueException
+
+        # X with only mass modification should fail for composition calculation
+        peptidoform = Peptidoform("ACX[+100.5]DE")
+
+        with pytest.raises(
+            AmbiguousResidueException,
+            match="Cannot resolve composition for `X` without associated formula modification",
+        ):
+            _ = peptidoform.sequential_composition
+
 
 def test_format_number_as_string():
+    """Test format_number_as_string function."""
     test_cases = [
         (1212.12, "+1212.12"),
         (-1212.12, "-1212.12"),

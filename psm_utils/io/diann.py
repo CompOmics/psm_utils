@@ -1,12 +1,11 @@
 """
-Reader for PSM files from DIA-NN
+Reader for PSM files from DIA-NN.
 
 Reads the '.tsv' file as defined on the
 `DIA-NN documentation page <https://github.com/vdemichev/DiaNN/tree/1.8.1?tab=readme-ov-file#main-output-reference>`_.
 
 Notes
 -----
-
 - DIA-NN calculates q-values at both the run and library level. The run-level q-value is used as
   the PSM q-value.
 - DIA-NN currently does not return precursor m/z values.
@@ -18,7 +17,11 @@ from __future__ import annotations
 
 import csv
 import re
-from typing import Iterable, Optional
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any, cast
+
+import pandas as pd
 
 from psm_utils.io._base_classes import ReaderBase
 from psm_utils.io._utils import set_csv_field_size_limit
@@ -27,7 +30,7 @@ from psm_utils.psm_list import PSMList
 
 set_csv_field_size_limit()
 
-RESCORING_FEATURES = [
+RESCORING_FEATURES: list[str] = [
     "RT",
     "Predicted.RT",
     "iRT",
@@ -42,7 +45,9 @@ RESCORING_FEATURES = [
 
 
 class DIANNTSVReader(ReaderBase):
-    def __init__(self, filename, *args, **kwargs) -> None:
+    """Reader for DIA-NN TSV format."""
+
+    def __init__(self, filename: str | Path, *args: Any, **kwargs: Any) -> None:
         """
         Reader for DIA-NN '.tsv' file.
 
@@ -50,21 +55,27 @@ class DIANNTSVReader(ReaderBase):
         ----------
         filename : str or Path
             Path to PSM file.
+        *args
+            Additional positional arguments passed to the base class.
+        **kwargs
+            Additional keyword arguments passed to the base class.
 
         """
         super().__init__(filename, *args, **kwargs)
-        self.filename = filename
 
-    def __iter__(self) -> Iterable[PSM]:
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
         with open(self.filename) as msms_in:
             reader = csv.DictReader(msms_in, delimiter="\t")
             for row in reader:
-                yield self._get_peptide_spectrum_match(row)
+                yield self._get_peptide_spectrum_match(row, self.filename)
 
-    def _get_peptide_spectrum_match(self, psm_dict) -> PSM:
+    @staticmethod
+    def _get_peptide_spectrum_match(
+        psm_dict: dict[str, str], filename: str | Path | None = None
+    ) -> PSM:
         """Parse a single PSM from a DIA-NN PSM file."""
-        rescoring_features = {}
+        rescoring_features: dict[str, Any] = {}
         for ft in RESCORING_FEATURES:
             try:
                 rescoring_features[ft] = psm_dict[ft]
@@ -72,7 +83,7 @@ class DIANNTSVReader(ReaderBase):
                 continue
 
         return PSM(
-            peptidoform=self._parse_peptidoform(
+            peptidoform=DIANNTSVReader._parse_peptidoform(
                 psm_dict["Modified.Sequence"], psm_dict["Precursor.Charge"]
             ),
             spectrum_id=psm_dict["MS2.Scan"],
@@ -87,20 +98,20 @@ class DIANNTSVReader(ReaderBase):
             protein_list=psm_dict["Protein.Ids"].split(";"),
             source="diann",
             rank=None,
-            provenance_data=({"diann_filename": str(self.filename)}),
+            provenance_data=({"diann_filename": str(filename)} if filename else {}),
             rescoring_features=rescoring_features,
             metadata={},
         )
 
     @staticmethod
-    def _parse_peptidoform(peptide: str, charge: Optional[str]) -> str:
+    def _parse_peptidoform(peptide: str, charge: str | None) -> str:
         # Add charge
         if charge:
             peptide += f"/{int(float(charge))}"
 
         # Replace parentheses with square brackets and capitalize UniMod prefix
-        pattern = r"\(UniMod:(\d+)\)"
-        replacement = r"[UNIMOD:\1]"
+        pattern: str = r"\(UniMod:(\d+)\)"
+        replacement: str = r"[UNIMOD:\1]"
         peptide = re.sub(pattern, replacement, peptide)
 
         # Add hyphen for N-terminal modifications
@@ -115,11 +126,7 @@ class DIANNTSVReader(ReaderBase):
         return peptide
 
     @classmethod
-    def from_dataframe(cls, dataframe) -> PSMList:
+    def from_dataframe(cls, dataframe: pd.DataFrame) -> PSMList:
         """Create a PSMList from a DIA-NN Pandas DataFrame."""
-        return PSMList(
-            ptm_list=[
-                cls._get_peptide_spectrum_match(cls(""), entry)
-                for entry in dataframe.to_dict(orient="records")
-            ]
-        )
+        records = cast(list[dict[str, str]], dataframe.to_dict(orient="records"))
+        return PSMList(psm_list=[cls._get_peptide_spectrum_match(entry) for entry in records])

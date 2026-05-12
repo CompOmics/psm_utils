@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 import re
+from collections.abc import Iterator, Sequence
 from itertools import compress
 from pathlib import Path
 
@@ -12,9 +13,9 @@ import numpy as np
 
 from psm_utils.exceptions import PSMUtilsException
 from psm_utils.io._base_classes import ReaderBase
+from psm_utils.io._utils import set_csv_field_size_limit
 from psm_utils.peptidoform import Peptidoform
 from psm_utils.psm import PSM
-from psm_utils.io._utils import set_csv_field_size_limit
 
 set_csv_field_size_limit()
 
@@ -44,19 +45,20 @@ class MSMSReader(ReaderBase):
         **kwargs,
     ) -> None:
         """
-        Reader for MaxQuant msms.txt PSM files.
+        Initialize reader for MaxQuant msms.txt PSM files.
 
         Parameters
         ----------
-        filename: str, pathlib.Path
-            Path to PSM file.
-        decoy_prefix: str, optional
-            Protein name prefix used to denote decoy protein entries. Default:
-            ``"DECOY_"``.
+        filename
+            Path to the MaxQuant msms.txt PSM file.
+        *args
+            Additional positional arguments passed to parent class.
+        **kwargs
+            Additional keyword arguments passed to parent class.
 
         Examples
         --------
-        :py:class:`MSMSReader` supports iteration:
+        MSMSReader supports iteration:
 
         >>> from psm_utils.io.maxquant import MSMSReader
         >>> for psm in MSMSReader("msms.txt"):
@@ -66,20 +68,18 @@ class MSMSReader(ReaderBase):
         GANLGEMTNAGIPVPPGFC[+57.022]VTAEAYK
         ...
 
-        Or a full file can be read at once into a
-        :py:class:`~psm_utils.psm_list.PSMList` object:
+        Or a full file can be read at once into a :py:class:`~psm_utils.psm_list.PSMList`
+        object:
 
         >>> reader = MSMSReader("msms.txt")
         >>> psm_list = reader.read_file()
 
         """
-
         super().__init__(filename, *args, **kwargs)
-
         self._validate_msms()
 
-    def __iter__(self):
-        """Iterate over file and return PSMs one-by-one"""
+    def __iter__(self) -> Iterator[PSM]:
+        """Iterate over file and return PSMs one-by-one."""
         with open(self.filename) as msms_in:
             reader = csv.DictReader(msms_in, delimiter="\t")
             for psm_dict in reader:
@@ -87,13 +87,16 @@ class MSMSReader(ReaderBase):
                 yield psm
 
     def _validate_msms(self) -> None:
-        with open(self.filename, "r") as msms_file:
+        """Validate that the msms.txt file contains required columns."""
+        with open(self.filename) as msms_file:
             msms_reader = csv.DictReader(msms_file, delimiter="\t")
             self._evaluate_columns(msms_reader.fieldnames)
 
     @staticmethod
-    def _evaluate_columns(columns) -> bool:
-        """Case insensitive column evaluation msms file."""
+    def _evaluate_columns(columns: Sequence[str] | None) -> None:
+        """Case insensitive column evaluation for msms file."""
+        if columns is None:
+            raise MSMSParsingError("MSMS file does not contain any columns.")
         columns = list(map(lambda col: col.lower(), columns))
         column_check = [True if col.lower() in columns else False for col in MSMS_REQUIRED_COLUMNS]
         if not all(column_check):
@@ -101,11 +104,12 @@ class MSMSReader(ReaderBase):
                 f"Missing columns: {list(compress(MSMS_REQUIRED_COLUMNS, list(~np.array(column_check))))}"
             )
 
-    def _get_peptide_spectrum_match(self, psm_dict: dict[str, str | float]) -> PSM:
+    def _get_peptide_spectrum_match(self, psm_dict: dict[str, str]) -> PSM:
         """Return a PSM object from MaxQuant msms.txt PSM file."""
-
         psm = PSM(
-            peptidoform=self._parse_peptidoform(psm_dict["Modified sequence"], psm_dict["Charge"]),
+            peptidoform=self._parse_peptidoform(
+                psm_dict["Modified sequence"], int(psm_dict["Charge"])
+            ),
             spectrum_id=psm_dict["Scan number"],
             run=psm_dict["Raw file"],
             is_decoy=psm_dict["Reverse"] == "+",
@@ -126,8 +130,7 @@ class MSMSReader(ReaderBase):
 
     @staticmethod
     def _parse_peptidoform(modified_seq: str, charge: int) -> Peptidoform:
-        """Parse modified sequence to :py:class:`~psm_utils.peptidoform.Peptidoform`."""
-
+        """Parse modified sequence to Peptidoform."""
         # pattern to match open and closed round brackets
         pattern = re.compile(r"\(((?:[^)(]+|\((?:[^)(]+|\([^)(]*\))*\))*)\)")
         modified_seq = modified_seq.strip("_")

@@ -1,242 +1,270 @@
-"""SQLAlchemy models for Mascot MSF files."""
+"""
+SQLAlchemy ORM models for Proteome Discoverer MSF database files.
+
+This module provides SQLAlchemy table definitions for interfacing with Proteome Discoverer MSF
+(Mascot Search Form) database files. MSF files contain proteomics search results including
+peptide identifications, protein annotations, spectra metadata, and quantification data.
+
+The table definitions are auto-generated from MSF schema and follow SQLAlchemy 2.0 patterns
+with proper typing support.
+
+Examples
+--------
+>>> from psm_utils.io._pd_msf_tables import Base, Peptide
+>>> # Use with SQLAlchemy session to query MSF database
+>>> session.query(Peptide).filter(Peptide.ConfidenceLevel > 2).all()
+
+Notes
+-----
+These models are primarily used internally by the proteome_discoverer module for reading PSM
+data from MSF files.
+
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
 
 from sqlalchemy import (
     CHAR,
     BigInteger,
     Boolean,
-    Column,
     DateTime,
     Float,
     Index,
     Integer,
     LargeBinary,
+    MetaData,
     SmallInteger,
     String,
-    Table,
     Text,
     UniqueConstraint,
     text,
 )
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-try:
-    from sqlalchemy.orm import declarative_base
-except ImportError:
-    from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql.sqltypes import NullType
 
-Base = declarative_base()
-metadata = Base.metadata
+class Base(DeclarativeBase):
+    """Base class for all MSF table models."""
+
+    pass
+
+
+# Module-level metadata reference for table definitions
+metadata: MetaData = Base.metadata
 
 
 class AminoAcidModification(Base):
     __tablename__ = "AminoAcidModifications"
 
-    AminoAcidModificationID = Column(Integer, primary_key=True)
-    ModificationName = Column(String, nullable=False)
-    DeltaMass = Column(Float)
-    Substitution = Column(String)
-    LeavingGroup = Column(String)
-    Abbreviation = Column(String, nullable=False)
-    PositionType = Column(Integer, nullable=False)
-    IsActive = Column(Boolean)
-    DeltaAverageMass = Column(Float)
-    UnimodAccession = Column(String)
-    IsSubstitution = Column(Boolean, nullable=False, server_default=text("0"))
+    AminoAcidModificationID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ModificationName: Mapped[str] = mapped_column(String, nullable=False)
+    DeltaMass: Mapped[float | None] = mapped_column(Float)
+    Substitution: Mapped[str | None] = mapped_column(String)
+    LeavingGroup: Mapped[str | None] = mapped_column(String)
+    Abbreviation: Mapped[str] = mapped_column(String, nullable=False)
+    PositionType: Mapped[int] = mapped_column(Integer, nullable=False)
+    IsActive: Mapped[bool | None] = mapped_column(Boolean)
+    DeltaAverageMass: Mapped[float | None] = mapped_column(Float)
+    UnimodAccession: Mapped[str | None] = mapped_column(String)
+    IsSubstitution: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("0"))
 
 
 class AminoAcidModificationsAminoAcid(Base):
     __tablename__ = "AminoAcidModificationsAminoAcids"
 
-    AminoAcidModificationID = Column(Integer, primary_key=True, nullable=False)
-    AminoAcidID = Column(Integer, primary_key=True, nullable=False)
-    Classification = Column(Integer, nullable=False)
+    AminoAcidModificationID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    AminoAcidID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Classification: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class AminoAcidModificationsAminoAcidsNL(Base):
     __tablename__ = "AminoAcidModificationsAminoAcidsNL"
 
-    AminoAcidModificationID = Column(Integer, primary_key=True, nullable=False)
-    AminoAcidID = Column(Integer, primary_key=True, nullable=False)
-    NeutralLossID = Column(Integer, primary_key=True, nullable=False)
+    AminoAcidModificationID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    AminoAcidID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    NeutralLossID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
 
 
 class AminoAcidModificationsNeutralLoss(Base):
     __tablename__ = "AminoAcidModificationsNeutralLosses"
 
-    NeutralLossID = Column(Integer, primary_key=True)
-    Name = Column(String, nullable=False)
-    MonoisotopicMass = Column(Float, nullable=False)
-    AverageMass = Column(Float, nullable=False)
+    NeutralLossID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Name: Mapped[str] = mapped_column(String, nullable=False)
+    MonoisotopicMass: Mapped[float] = mapped_column(Float, nullable=False)
+    AverageMass: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class AminoAcid(Base):
     __tablename__ = "AminoAcids"
 
-    AminoAcidID = Column(Integer, primary_key=True)
-    AminoAcidName = Column(String, nullable=False)
-    OneLetterCode = Column(CHAR)
-    ThreeLetterCode = Column(CHAR)
-    MonoisotopicMass = Column(Float, nullable=False)
-    AverageMass = Column(Float, nullable=False)
-    SumFormula = Column(String)
+    AminoAcidID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    AminoAcidName: Mapped[str] = mapped_column(String, nullable=False)
+    OneLetterCode: Mapped[str | None] = mapped_column(CHAR)
+    ThreeLetterCode: Mapped[str | None] = mapped_column(CHAR)
+    MonoisotopicMass: Mapped[float] = mapped_column(Float, nullable=False)
+    AverageMass: Mapped[float] = mapped_column(Float, nullable=False)
+    SumFormula: Mapped[str | None] = mapped_column(String)
 
 
 class AnnotationDataVersion(Base):
     __tablename__ = "AnnotationDataVersion"
 
-    PcDataVersion = Column(Integer, primary_key=True)
-    PcDataRelease = Column(BigInteger, nullable=False)
+    PcDataVersion: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PcDataRelease: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
 class AnnotationDataset(Base):
     __tablename__ = "AnnotationDataset"
 
-    DatasetId = Column(Integer, primary_key=True)
-    Name = Column(String, nullable=False)
-    DisplayName = Column(String, nullable=False)
-    Guid = Column(String, nullable=False)
-    Description = Column(Text)
+    DatasetId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Name: Mapped[str] = mapped_column(String, nullable=False)
+    DisplayName: Mapped[str] = mapped_column(String, nullable=False)
+    Guid: Mapped[str] = mapped_column(String, nullable=False)
+    Description: Mapped[str | None] = mapped_column(Text)
 
 
 class AnnotationGroup(Base):
     __tablename__ = "AnnotationGroups"
 
-    AnnotationGroupId = Column(Integer, primary_key=True, nullable=False)
-    Description = Column(Text)
-    DatasetId = Column(Integer, primary_key=True, nullable=False)
-    Position = Column(Integer, nullable=False)
-    ColorR = Column(Integer, nullable=False)
-    ColorG = Column(Integer, nullable=False)
-    ColorB = Column(Integer, nullable=False)
-    GroupDefinition = Column(LargeBinary)
+    AnnotationGroupId: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Description: Mapped[str | None] = mapped_column(Text)
+    DatasetId: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Position: Mapped[int] = mapped_column(Integer, nullable=False)
+    ColorR: Mapped[int] = mapped_column(Integer, nullable=False)
+    ColorG: Mapped[int] = mapped_column(Integer, nullable=False)
+    ColorB: Mapped[int] = mapped_column(Integer, nullable=False)
+    GroupDefinition: Mapped[bytes | None] = mapped_column(LargeBinary)
 
 
 class AnnotationType(Base):
     __tablename__ = "AnnotationTypes"
 
-    AnnotationTypeId = Column(Integer, primary_key=True)
-    Name = Column(String, nullable=False)
-    Description = Column(Text)
+    AnnotationTypeId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Name: Mapped[str] = mapped_column(String, nullable=False)
+    Description: Mapped[str | None] = mapped_column(Text)
 
 
 class Annotation(Base):
     __tablename__ = "Annotations"
 
-    AnnotationId = Column(Integer, primary_key=True)
-    Accession = Column(String, nullable=False)
-    Description = Column(Text)
-    type = Column(Integer)
+    AnnotationId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Accession: Mapped[str] = mapped_column(String, nullable=False)
+    Description: Mapped[str | None] = mapped_column(Text)
+    type: Mapped[int | None] = mapped_column(Integer)
 
 
 class AnnotationsAnnotationGroup(Base):
     __tablename__ = "AnnotationsAnnotationGroups"
 
-    AnnotationId = Column(Integer, primary_key=True, nullable=False)
-    AnnotationGroupId = Column(Integer, primary_key=True, nullable=False)
+    AnnotationId: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    AnnotationGroupId: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
 
 
 class AnnotationsProtein(Base):
     __tablename__ = "AnnotationsProtein"
 
-    proteinID = Column(Integer, primary_key=True, nullable=False)
-    AnnotationId = Column(Integer, primary_key=True, nullable=False)
-    Evidence = Column(Integer, primary_key=True)
-    PositionBegin = Column(Integer, primary_key=True)
-    PositionEnd = Column(Integer)
-    ProteinAccession = Column(String, primary_key=True, nullable=False)
+    proteinID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    AnnotationId: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Evidence: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    PositionBegin: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    PositionEnd: Mapped[int | None] = mapped_column(Integer)
+    ProteinAccession: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
 
 
 class Chromatogram(Base):
     __tablename__ = "Chromatograms"
 
-    FileID = Column(Integer, primary_key=True, nullable=False)
-    TraceType = Column(Integer, primary_key=True, nullable=False)
-    Chromatogram = Column(String, nullable=False)
+    FileID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    TraceType: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Chromatogram: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class CustomDataField(Base):
     __tablename__ = "CustomDataFields"
 
-    FieldID = Column(Integer, primary_key=True)
-    Guid = Column(String, nullable=False)
-    DisplayName = Column(String, nullable=False)
-    SourceNodeNumber = Column(Integer, nullable=False)
-    TargetNodeNumber = Column(Integer, nullable=False)
-    DataType = Column(Integer, nullable=False)
-    DataTarget = Column(Integer, nullable=False)
-    Version = Column(Float, nullable=False)
-    AccessMode = Column(Integer, server_default=text("0"))
-    Visibility = Column(Integer, server_default=text("0"))
-    GroupVisibility = Column(Integer, server_default=text("0"))
-    Format = Column(String)
-    PlotType = Column(Integer, nullable=False)
-    DataPurpose = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Guid: Mapped[str] = mapped_column(String, nullable=False)
+    DisplayName: Mapped[str] = mapped_column(String, nullable=False)
+    SourceNodeNumber: Mapped[int] = mapped_column(Integer, nullable=False)
+    TargetNodeNumber: Mapped[int] = mapped_column(Integer, nullable=False)
+    DataType: Mapped[int] = mapped_column(Integer, nullable=False)
+    DataTarget: Mapped[int] = mapped_column(Integer, nullable=False)
+    Version: Mapped[float] = mapped_column(Float, nullable=False)
+    AccessMode: Mapped[int | None] = mapped_column(Integer, server_default=text("0"))
+    Visibility: Mapped[int | None] = mapped_column(Integer, server_default=text("0"))
+    GroupVisibility: Mapped[int | None] = mapped_column(Integer, server_default=text("0"))
+    Format: Mapped[str | None] = mapped_column(String)
+    PlotType: Mapped[int] = mapped_column(Integer, nullable=False)
+    DataPurpose: Mapped[str | None] = mapped_column(String)
 
 
 class CustomDataPeptide(Base):
     __tablename__ = "CustomDataPeptides"
 
-    FieldID = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False, index=True)
-    FieldValue = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    FieldValue: Mapped[str | None] = mapped_column(String)
 
 
 class CustomDataPeptidesDecoy(Base):
     __tablename__ = "CustomDataPeptides_decoy"
 
-    FieldID = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False, index=True)
-    FieldValue = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    FieldValue: Mapped[str | None] = mapped_column(String)
 
 
 class CustomDataProcessingNode(Base):
     __tablename__ = "CustomDataProcessingNodes"
 
-    FieldID = Column(Integer, primary_key=True, nullable=False)
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False, index=True)
-    FieldValue = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(
+        Integer, primary_key=True, nullable=False, index=True
+    )
+    FieldValue: Mapped[str | None] = mapped_column(String)
 
 
 class CustomDataProtein(Base):
     __tablename__ = "CustomDataProteins"
 
-    FieldID = Column(Integer, primary_key=True, nullable=False)
-    ProteinID = Column(Integer, primary_key=True, nullable=False, index=True)
-    FieldValue = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    FieldValue: Mapped[str | None] = mapped_column(String)
 
 
 class CustomDataProteinsDecoy(Base):
     __tablename__ = "CustomDataProteins_decoy"
 
-    FieldID = Column(Integer, primary_key=True, nullable=False)
-    ProteinID = Column(Integer, primary_key=True, nullable=False, index=True)
-    FieldValue = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    FieldValue: Mapped[str | None] = mapped_column(String)
 
 
 class CustomDataSpectra(Base):
     __tablename__ = "CustomDataSpectra"
 
-    FieldID = Column(Integer, primary_key=True, nullable=False)
-    SpectrumID = Column(Integer, primary_key=True, nullable=False, index=True)
-    FieldValue = Column(String)
+    FieldID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    SpectrumID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    FieldValue: Mapped[str | None] = mapped_column(String)
 
 
 class Enzyme(Base):
     __tablename__ = "Enzymes"
 
-    EnzymeID = Column(Integer, primary_key=True)
-    Name = Column(String, nullable=False)
-    Abbreviation = Column(String, nullable=False)
-    Seperator = Column(String, nullable=False)
-    NonSeperator = Column(String, nullable=False)
-    Offset = Column(Integer, nullable=False)
+    EnzymeID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Name: Mapped[str] = mapped_column(String, nullable=False)
+    Abbreviation: Mapped[str] = mapped_column(String, nullable=False)
+    Seperator: Mapped[str] = mapped_column(String, nullable=False)
+    NonSeperator: Mapped[str] = mapped_column(String, nullable=False)
+    Offset: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class EnzymesCleavageSpecificity(Base):
     __tablename__ = "EnzymesCleavageSpecificities"
 
-    EnzymeID = Column(Integer, primary_key=True, nullable=False)
-    Specificity = Column(Integer, primary_key=True, nullable=False)
+    EnzymeID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Specificity: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
 
 
 class EventAnnotation(Base):
@@ -248,20 +276,20 @@ class EventAnnotation(Base):
         Index("IX_EventAnnotations_QuanResultID_QuanChannelID", "QuanResultID", "QuanChannelID"),
     )
 
-    EventID = Column(Integer, primary_key=True)
-    Charge = Column(SmallInteger, nullable=False)
-    IsotopePatternID = Column(Integer, nullable=False)
-    QuanResultID = Column(Integer, nullable=False)
-    QuanChannelID = Column(Integer, nullable=False)
+    EventID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Charge: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    IsotopePatternID: Mapped[int] = mapped_column(Integer, nullable=False)
+    QuanResultID: Mapped[int] = mapped_column(Integer, nullable=False)
+    QuanChannelID: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class EventAreaAnnotation(Base):
     __tablename__ = "EventAreaAnnotations"
 
-    EventID = Column(Integer, primary_key=True)
-    Charge = Column(SmallInteger, nullable=False)
-    IsotopePatternID = Column(Integer, nullable=False, index=True)
-    QuanResultID = Column(Integer, nullable=False)
+    EventID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Charge: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    IsotopePatternID: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    QuanResultID: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class Event(Base):
@@ -271,316 +299,325 @@ class Event(Base):
         Index("IX_Events_FileID_RT", "FileID", "RT"),
     )
 
-    EventID = Column(Integer, primary_key=True)
-    Mass = Column(Float, nullable=False)
-    MassAvg = Column(Float, nullable=False)
-    Area = Column(Float, nullable=False)
-    Intensity = Column(Float, nullable=False)
-    PeakWidth = Column(Float, nullable=False)
-    RT = Column(Float, nullable=False)
-    LeftRT = Column(Float, nullable=False)
-    RightRT = Column(Float, nullable=False)
-    SN = Column(Float, nullable=False, server_default=text("0.0"))
-    FileID = Column(Integer, nullable=False)
+    EventID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Mass: Mapped[float] = mapped_column(Float, nullable=False)
+    MassAvg: Mapped[float] = mapped_column(Float, nullable=False)
+    Area: Mapped[float] = mapped_column(Float, nullable=False)
+    Intensity: Mapped[float] = mapped_column(Float, nullable=False)
+    PeakWidth: Mapped[float] = mapped_column(Float, nullable=False)
+    RT: Mapped[float] = mapped_column(Float, nullable=False)
+    LeftRT: Mapped[float] = mapped_column(Float, nullable=False)
+    RightRT: Mapped[float] = mapped_column(Float, nullable=False)
+    SN: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0.0"))
+    FileID: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class FastaFile(Base):
     __tablename__ = "FastaFiles"
 
-    FastaFileID = Column(Integer, primary_key=True)
-    FileName = Column(String, nullable=False)
-    State = Column(Integer, nullable=False)
-    VirtualFileName = Column(String, nullable=False)
-    FileSize = Column(BigInteger, nullable=False)
-    FileTime = Column(BigInteger, nullable=False)
-    NumberOfProteins = Column(BigInteger)
-    NumberOfAminoAcids = Column(BigInteger)
-    FileHashCode = Column(BigInteger)
-    Hidden = Column(Boolean, nullable=False)
-    IsSrfImport = Column(Boolean, nullable=False)
-    IsScheduledForDeletion = Column(Boolean, nullable=False, server_default=text("0"))
+    FastaFileID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    FileName: Mapped[str] = mapped_column(String, nullable=False)
+    State: Mapped[int] = mapped_column(Integer, nullable=False)
+    VirtualFileName: Mapped[str] = mapped_column(String, nullable=False)
+    FileSize: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    FileTime: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    NumberOfProteins: Mapped[int | None] = mapped_column(BigInteger)
+    NumberOfAminoAcids: Mapped[int | None] = mapped_column(BigInteger)
+    FileHashCode: Mapped[int | None] = mapped_column(BigInteger)
+    Hidden: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    IsSrfImport: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    IsScheduledForDeletion: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("0")
+    )
 
 
 class FastaFilesProteinAnnotation(Base):
     __tablename__ = "FastaFilesProteinAnnotations"
 
-    FastaFileID = Column(Integer, primary_key=True, nullable=False)
-    ProteinAnnotationID = Column(Integer, primary_key=True, nullable=False, index=True)
+    FastaFileID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProteinAnnotationID: Mapped[int] = mapped_column(
+        Integer, primary_key=True, nullable=False, index=True
+    )
 
 
 class FileInfo(Base):
     __tablename__ = "FileInfos"
 
-    FileID = Column(Integer, primary_key=True)
-    FileName = Column(String, nullable=False)
-    FileTime = Column(String, nullable=False)
-    FileSize = Column(BigInteger, nullable=False)
-    PhysicalFileName = Column(String, nullable=False)
-    FileType = Column(SmallInteger, nullable=False)
+    FileID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    FileName: Mapped[str] = mapped_column(String, nullable=False)
+    FileTime: Mapped[str] = mapped_column(String, nullable=False)
+    FileSize: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    PhysicalFileName: Mapped[str] = mapped_column(String, nullable=False)
+    FileType: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
 
 class MassPeakRelation(Base):
     __tablename__ = "MassPeakRelations"
 
-    MassPeakID = Column(Integer, primary_key=True, nullable=False)
-    RelatedMassPeakID = Column(Integer, primary_key=True, nullable=False)
+    MassPeakID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    RelatedMassPeakID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
 
 
 class MassPeak(Base):
     __tablename__ = "MassPeaks"
 
-    MassPeakID = Column(Integer, primary_key=True)
-    Charge = Column(SmallInteger)
-    Intensity = Column(Float)
-    Mass = Column(Float)
-    ScanNumbers = Column(String)
-    FileID = Column(Integer)
-    PercentIsolationInterference = Column(Float)
-    IonInjectTime = Column(Integer)
+    MassPeakID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    Charge: Mapped[int | None] = mapped_column(SmallInteger)
+    Intensity: Mapped[float | None] = mapped_column(Float)
+    Mass: Mapped[float | None] = mapped_column(Float)
+    ScanNumbers: Mapped[str | None] = mapped_column(String)
+    FileID: Mapped[int | None] = mapped_column(Integer)
+    PercentIsolationInterference: Mapped[float | None] = mapped_column(Float)
+    IonInjectTime: Mapped[int | None] = mapped_column(Integer)
 
 
 class PeptideScore(Base):
     __tablename__ = "PeptideScores"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False)
-    ScoreID = Column(Integer, primary_key=True, nullable=False)
-    ProcessingNodeID = Column(Integer)
-    ScoreValue = Column(Float, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ScoreID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeID: Mapped[int | None] = mapped_column(Integer)
+    ScoreValue: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class PeptideScoreDecoy(Base):
     __tablename__ = "PeptideScores_decoy"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False)
-    ScoreID = Column(Integer, primary_key=True, nullable=False)
-    ProcessingNodeID = Column(Integer)
-    ScoreValue = Column(Float, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ScoreID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeID: Mapped[int | None] = mapped_column(Integer)
+    ScoreValue: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class Peptide(Base):
     __tablename__ = "Peptides"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False, index=True)
-    SpectrumID = Column(Integer, nullable=False, index=True)
-    TotalIonsCount = Column(SmallInteger, nullable=False)
-    MatchedIonsCount = Column(SmallInteger, nullable=False)
-    ConfidenceLevel = Column(SmallInteger, nullable=False)
-    SearchEngineRank = Column(Integer, nullable=False)
-    Hidden = Column(Boolean, nullable=False, server_default=text("0"))
-    Sequence = Column(String)
-    Annotation = Column(String)
-    UniquePeptideSequenceID = Column(Integer, nullable=False, server_default=text("1"))
-    MissedCleavages = Column(SmallInteger, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    SpectrumID: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    TotalIonsCount: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    MatchedIonsCount: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    ConfidenceLevel: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    SearchEngineRank: Mapped[int] = mapped_column(Integer, nullable=False)
+    Hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("0"))
+    Sequence: Mapped[str | None] = mapped_column(String)
+    Annotation: Mapped[str | None] = mapped_column(String)
+    UniquePeptideSequenceID: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    MissedCleavages: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
 
 class PeptidesAminoAcidModification(Base):
     __tablename__ = "PeptidesAminoAcidModifications"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False)
-    AminoAcidModificationID = Column(Integer, primary_key=True, nullable=False)
-    Position = Column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    AminoAcidModificationID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Position: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class PeptidesAminoAcidModificationsDecoy(Base):
     __tablename__ = "PeptidesAminoAcidModifications_decoy"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False)
-    AminoAcidModificationID = Column(Integer, primary_key=True, nullable=False)
-    Position = Column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    AminoAcidModificationID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Position: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class PeptidesProtein(Base):
     __tablename__ = "PeptidesProteins"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False, index=True)
-    ProteinID = Column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class PeptidesProteinDecoy(Base):
     __tablename__ = "PeptidesProteins_decoy"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False, index=True)
-    ProteinID = Column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class PeptidesReferenceSpectra(Base):
     __tablename__ = "PeptidesReferenceSpectra"
 
-    PeptideID = Column(Integer, primary_key=True)
-    ReferenceSpectrumID = Column(Integer, nullable=False)
+    PeptideID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    ReferenceSpectrumID: Mapped[int] = mapped_column(Integer)
 
 
 class PeptidesTerminalModification(Base):
     __tablename__ = "PeptidesTerminalModifications"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False)
-    TerminalModificationID = Column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    TerminalModificationID: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class PeptidesTerminalModificationDecoy(Base):
     __tablename__ = "PeptidesTerminalModifications_decoy"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False)
-    TerminalModificationID = Column(Integer, primary_key=True, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    TerminalModificationID: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class PeptideDecoy(Base):
     __tablename__ = "Peptides_decoy"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    PeptideID = Column(Integer, primary_key=True, nullable=False, index=True)
-    SpectrumID = Column(Integer, nullable=False, index=True)
-    TotalIonsCount = Column(SmallInteger, nullable=False)
-    MatchedIonsCount = Column(SmallInteger, nullable=False)
-    ConfidenceLevel = Column(SmallInteger, nullable=False)
-    SearchEngineRank = Column(Integer, nullable=False)
-    Sequence = Column(String)
-    Annotation = Column(String)
-    UniquePeptideSequenceID = Column(Integer, nullable=False, server_default=text("1"))
-    MissedCleavages = Column(SmallInteger, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    PeptideID: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    SpectrumID: Mapped[int] = mapped_column(Integer, index=True)
+    TotalIonsCount: Mapped[int] = mapped_column(SmallInteger)
+    MatchedIonsCount: Mapped[int] = mapped_column(SmallInteger)
+    ConfidenceLevel: Mapped[int] = mapped_column(SmallInteger)
+    SearchEngineRank: Mapped[int] = mapped_column(Integer)
+    Sequence: Mapped[str | None] = mapped_column(String)
+    Annotation: Mapped[str | None] = mapped_column(String)
+    UniquePeptideSequenceID: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    MissedCleavages: Mapped[int] = mapped_column(SmallInteger)
 
 
-t_PrecursorIonAreaSearchSpectra = Table(
-    "PrecursorIonAreaSearchSpectra",
-    metadata,
-    Column("QuanResultID", Integer, nullable=False, index=True),
-    Column("SearchSpectrumID", Integer),
-)
+class PrecursorIonAreaSearchSpectra(Base):
+    __tablename__ = "PrecursorIonAreaSearchSpectra"
+
+    QuanResultID: Mapped[int] = mapped_column(
+        Integer, primary_key=True, nullable=False, index=True
+    )
+    SearchSpectrumID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
 
 
-t_PrecursorIonQuanResults = Table(
-    "PrecursorIonQuanResults",
-    metadata,
-    Column("QuanChannelID", Integer, nullable=False),
-    Column("QuanResultID", Integer, nullable=False),
-    Column("Mass", Float, nullable=False),
-    Column("Charge", Integer, nullable=False),
-    Column("Area", Float),
-    Column("RetentionTime", Float),
-    Index(
-        "IX_PrecursorIonQuanResults_QuanResultID_QuanChannelID", "QuanResultID", "QuanChannelID"
-    ),
-)
+class PrecursorIonQuanResult(Base):
+    __tablename__ = "PrecursorIonQuanResults"
+    __table_args__ = (
+        Index(
+            "IX_PrecursorIonQuanResults_QuanResultID_QuanChannelID",
+            "QuanResultID",
+            "QuanChannelID",
+        ),
+    )
+
+    QuanChannelID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    QuanResultID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Mass: Mapped[float] = mapped_column(Float, nullable=False)
+    Charge: Mapped[int] = mapped_column(Integer, nullable=False)
+    Area: Mapped[float | None] = mapped_column(Float)
+    RetentionTime: Mapped[float | None] = mapped_column(Float)
 
 
-t_PrecursorIonQuanResultsSearchSpectra = Table(
-    "PrecursorIonQuanResultsSearchSpectra",
-    metadata,
-    Column("ProcessingNodeNumber", Integer, nullable=False),
-    Column("QuanResultID", Integer, nullable=False, index=True),
-    Column("SearchSpectrumID", Integer, index=True),
-)
+class PrecursorIonQuanResultsSearchSpectra(Base):
+    __tablename__ = "PrecursorIonQuanResultsSearchSpectra"
+
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    QuanResultID: Mapped[int] = mapped_column(
+        Integer, primary_key=True, nullable=False, index=True
+    )
+    SearchSpectrumID: Mapped[int | None] = mapped_column(Integer, index=True)
 
 
-t_ProcessingNodeConnectionPoints = Table(
-    "ProcessingNodeConnectionPoints",
-    metadata,
-    Column("ProcessingNodeID", Integer, nullable=False),
-    Column("Interface", String, nullable=False),
-    Column("ConnectionDirection", Integer, nullable=False),
-    Column("ConnectionMode", Integer, nullable=False),
-    Column("ConnectionMultiplicity", Integer, nullable=False),
-    Column("ConnectionRequirement", Integer, nullable=False),
-    Column("DataTypeSpecialization", String, nullable=False),
-    Column("ConnectionDisplayName", String, nullable=False),
-)
+class ProcessingNodeConnectionPoint(Base):
+    __tablename__ = "ProcessingNodeConnectionPoints"
+
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Interface: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    ConnectionDirection: Mapped[int] = mapped_column(Integer, nullable=False)
+    ConnectionMode: Mapped[int] = mapped_column(Integer, nullable=False)
+    ConnectionMultiplicity: Mapped[int] = mapped_column(Integer, nullable=False)
+    ConnectionRequirement: Mapped[int] = mapped_column(Integer, nullable=False)
+    DataTypeSpecialization: Mapped[str] = mapped_column(String, nullable=False)
+    ConnectionDisplayName: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class ProcessingNodeExtension(Base):
     __tablename__ = "ProcessingNodeExtensions"
 
-    ExtensionID = Column(Integer, primary_key=True)
-    ProcessingNodeNumber = Column(Integer, nullable=False)
-    Guid = Column(String, nullable=False)
-    Purpose = Column(String, nullable=False)
-    PurposeDetail = Column(String)
-    MajorVersion = Column(Integer, nullable=False)
-    MinorVersion = Column(Integer, nullable=False)
-    Settings = Column(Text)
+    ExtensionID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer)
+    Guid: Mapped[str] = mapped_column(String)
+    Purpose: Mapped[str] = mapped_column(String)
+    PurposeDetail: Mapped[str | None] = mapped_column(String)
+    MajorVersion: Mapped[int] = mapped_column(Integer)
+    MinorVersion: Mapped[int] = mapped_column(Integer)
+    Settings: Mapped[str | None] = mapped_column(Text)
 
 
 class ProcessingNodeFilterParameter(Base):
     __tablename__ = "ProcessingNodeFilterParameters"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    FilterParameterName = Column(String, primary_key=True, nullable=False)
-    FilterModuleTypeID = Column(Integer, nullable=False)
-    FilterModuleNumber = Column(Integer, nullable=False)
-    ProcessingNodeID = Column(Integer, nullable=False)
-    FilterParameterValue = Column(Float, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    FilterParameterName: Mapped[str] = mapped_column(String, primary_key=True)
+    FilterModuleTypeID: Mapped[int] = mapped_column(Integer)
+    FilterModuleNumber: Mapped[int] = mapped_column(Integer)
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer)
+    FilterParameterValue: Mapped[float] = mapped_column(Float)
 
 
-t_ProcessingNodeInterfaces = Table(
-    "ProcessingNodeInterfaces",
-    metadata,
-    Column("ProcessingNodeID", Integer, nullable=False),
-    Column("InterfaceKind", Integer, nullable=False),
-    Column("InterfaceName", String, nullable=False),
-)
+class ProcessingNodeInterface(Base):
+    __tablename__ = "ProcessingNodeInterfaces"
+
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    InterfaceKind: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    InterfaceName: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
 
 
 class ProcessingNodeParameter(Base):
     __tablename__ = "ProcessingNodeParameters"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    ParameterName = Column(String, primary_key=True, nullable=False)
-    FriendlyName = Column(String, nullable=False)
-    ProcessingNodeID = Column(Integer, nullable=False)
-    IntendedPurpose = Column(Integer, nullable=False)
-    PurposeDetails = Column(String, nullable=False)
-    Hidden = Column(Boolean, nullable=False)
-    Advanced = Column(Boolean, nullable=False)
-    Category = Column(String, nullable=False)
-    Position = Column(Integer, nullable=False)
-    ParameterValue = Column(String, nullable=False)
-    ValueDisplayString = Column(String, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ParameterName: Mapped[str] = mapped_column(String, primary_key=True)
+    FriendlyName: Mapped[str] = mapped_column(String)
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer)
+    IntendedPurpose: Mapped[int] = mapped_column(Integer)
+    PurposeDetails: Mapped[str] = mapped_column(String)
+    Hidden: Mapped[bool] = mapped_column(Boolean)
+    Advanced: Mapped[bool] = mapped_column(Boolean)
+    Category: Mapped[str] = mapped_column(String)
+    Position: Mapped[int] = mapped_column(Integer)
+    ParameterValue: Mapped[str] = mapped_column(String)
+    ValueDisplayString: Mapped[str] = mapped_column(String)
 
 
 class ProcessingNodeScore(Base):
     __tablename__ = "ProcessingNodeScores"
     __table_args__ = (UniqueConstraint("ProcessingNodeID", "ScoreName"),)
 
-    ProcessingNodeID = Column(Integer, nullable=False)
-    ScoreID = Column(Integer, primary_key=True)
-    ScoreName = Column(String, nullable=False)
-    FriendlyName = Column(String, nullable=False)
-    Description = Column(String, nullable=False)
-    FormatString = Column(String, nullable=False)
-    ScoreCategory = Column(Integer, nullable=False)
-    Hidden = Column(Boolean, nullable=False)
-    IsMainScore = Column(Boolean, nullable=False)
-    ScoreGUID = Column(String, nullable=False)
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer)
+    ScoreID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    ScoreName: Mapped[str] = mapped_column(String)
+    FriendlyName: Mapped[str] = mapped_column(String)
+    Description: Mapped[str] = mapped_column(String)
+    FormatString: Mapped[str] = mapped_column(String)
+    ScoreCategory: Mapped[int] = mapped_column(Integer)
+    Hidden: Mapped[bool] = mapped_column(Boolean)
+    IsMainScore: Mapped[bool] = mapped_column(Boolean)
+    ScoreGUID: Mapped[str] = mapped_column(String)
 
 
 class ProcessingNode(Base):
     __tablename__ = "ProcessingNodes"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True)
-    ProcessingNodeID = Column(Integer, nullable=False)
-    ProcessingNodeParentNumber = Column(String, nullable=False)
-    NodeName = Column(String)
-    FriendlyName = Column(String, nullable=False)
-    MajorVersion = Column(Integer, nullable=False)
-    MinorVersion = Column(Integer, nullable=False)
-    NodeComment = Column(String)
-    NodeGUID = Column(String, nullable=False)
-    ProcessingNodeState = Column(Integer, nullable=False, server_default=text("0"))
+    ProcessingNodeNumber: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer)
+    ProcessingNodeParentNumber: Mapped[str] = mapped_column(String)
+    NodeName: Mapped[str | None] = mapped_column(String)
+    FriendlyName: Mapped[str] = mapped_column(String)
+    MajorVersion: Mapped[int] = mapped_column(Integer)
+    MinorVersion: Mapped[int] = mapped_column(Integer)
+    NodeComment: Mapped[str | None] = mapped_column(String)
+    NodeGUID: Mapped[str] = mapped_column(String)
+    ProcessingNodeState: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
 
 class ProcessingNodesSpectra(Base):
     __tablename__ = "ProcessingNodesSpectra"
 
-    SendingProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    SpectrumID = Column(Integer, primary_key=True, nullable=False, index=True)
+    SendingProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    SpectrumID: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
 
 class ProteinAnnotation(Base):
@@ -593,77 +630,76 @@ class ProteinAnnotation(Base):
         ),
     )
 
-    ProteinAnnotationID = Column(Integer, primary_key=True)
-    ProteinID = Column(Integer, nullable=False)
-    DescriptionHashCode = Column(BigInteger, nullable=False)
-    Description = Column(Text, nullable=False)
-    TaxonomyID = Column(Integer, nullable=False, index=True)
+    ProteinAnnotationID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    ProteinID: Mapped[int] = mapped_column(Integer)
+    DescriptionHashCode: Mapped[int] = mapped_column(BigInteger)
+    Description: Mapped[str] = mapped_column(Text)
+    TaxonomyID: Mapped[int] = mapped_column(Integer, index=True)
 
 
 class ProteinIdentificationGroup(Base):
     __tablename__ = "ProteinIdentificationGroups"
 
-    ProteinIdentificationGroupId = Column(Integer, primary_key=True, nullable=False)
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
+    ProteinIdentificationGroupId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 class ProteinScore(Base):
     __tablename__ = "ProteinScores"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    ProteinID = Column(Integer, primary_key=True, nullable=False)
-    ProteinIdentificationGroupID = Column(Integer, nullable=False)
-    ProteinScore = Column(Float, nullable=False)
-    Coverage = Column(Float, nullable=False, server_default=text("0"))
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ProteinIdentificationGroupID: Mapped[int] = mapped_column(Integer)
+    ProteinScore: Mapped[float] = mapped_column(Float)
+    Coverage: Mapped[float] = mapped_column(Float, server_default=text("0"))
 
 
 class ProteinScoresDecoy(Base):
     __tablename__ = "ProteinScores_decoy"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    ProteinID = Column(Integer, primary_key=True, nullable=False)
-    ProteinIdentificationGroupID = Column(Integer, nullable=False)
-    ProteinScore = Column(Float, nullable=False)
-    Coverage = Column(Float, nullable=False, server_default=text("0"))
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ProteinIdentificationGroupID: Mapped[int] = mapped_column(Integer)
+    ProteinScore: Mapped[float] = mapped_column(Float)
+    Coverage: Mapped[float] = mapped_column(Float, server_default=text("0"))
 
 
 class Protein(Base):
     __tablename__ = "Proteins"
 
-    ProteinID = Column(Integer, primary_key=True)
-    Sequence = Column(Text, nullable=False)
-    SequenceHashCode = Column(BigInteger, nullable=False, index=True)
-    IsMasterProtein = Column(Boolean, nullable=False, server_default=text("0"))
+    ProteinID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    Sequence: Mapped[str] = mapped_column(Text)
+    SequenceHashCode: Mapped[int] = mapped_column(BigInteger, index=True)
+    IsMasterProtein: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
 
 
-t_ProteinsProteinGroups = Table(
-    "ProteinsProteinGroups",
-    metadata,
-    Column("ProteinID", Integer, nullable=False),
-    Column("ProteinGroupID", Integer, nullable=False),
-)
+class ProteinsProteinGroup(Base):
+    __tablename__ = "ProteinsProteinGroups"
+
+    ProteinID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    ProteinGroupID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
 
 
 class PtmAnnotationDatum(Base):
     __tablename__ = "PtmAnnotationData"
 
-    AnnotationType = Column(Integer, primary_key=True, nullable=False)
-    ProteinId = Column(Integer, primary_key=True, nullable=False)
-    AnnotationId = Column(Integer, primary_key=True, nullable=False)
-    Position = Column(Integer, primary_key=True, nullable=False)
-    Annotation = Column(String)
+    AnnotationType: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ProteinId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    AnnotationId: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Annotation: Mapped[str | None] = mapped_column(String)
 
 
 class ReferenceSpectra(Base):
     __tablename__ = "ReferenceSpectra"
 
-    ReferenceSpectrumId = Column(Integer, primary_key=True)
-    Sequence = Column(String, nullable=False)
-    SequenceHashCode = Column(BigInteger, nullable=False)
-    Spectrum = Column(String, nullable=False)
-    SpectrumHashCode = Column(BigInteger, nullable=False)
-    Comment = Column(Text)
-    CommentHashCode = Column(BigInteger, nullable=False)
+    ReferenceSpectrumId: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    Sequence: Mapped[str] = mapped_column(String)
+    SequenceHashCode: Mapped[int] = mapped_column(BigInteger)
+    Spectrum: Mapped[str] = mapped_column(String)
+    SpectrumHashCode: Mapped[int] = mapped_column(BigInteger)
+    Comment: Mapped[str | None] = mapped_column(Text)
+    CommentHashCode: Mapped[int] = mapped_column(BigInteger)
 
 
 class ReporterIonQuanResult(Base):
@@ -676,84 +712,82 @@ class ReporterIonQuanResult(Base):
         ),
     )
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    QuanChannelID = Column(Integer, primary_key=True, nullable=False)
-    SpectrumID = Column(Integer, primary_key=True, nullable=False)
-    Mass = Column(Float, nullable=False)
-    Height = Column(Float)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    QuanChannelID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    SpectrumID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Mass: Mapped[float] = mapped_column(Float)
+    Height: Mapped[float | None] = mapped_column(Float)
 
 
-t_ReporterIonQuanResultsSearchSpectra = Table(
-    "ReporterIonQuanResultsSearchSpectra",
-    metadata,
-    Column("ProcessingNodeNumber", Integer, nullable=False),
-    Column("SpectrumID", Integer, nullable=False),
-    Column("SearchSpectrumID", Integer, index=True),
-)
+class ReporterIonQuanResultsSearchSpectra(Base):
+    __tablename__ = "ReporterIonQuanResultsSearchSpectra"
+
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    SpectrumID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    SearchSpectrumID: Mapped[int | None] = mapped_column(Integer, index=True)
 
 
 class ScanEvent(Base):
     __tablename__ = "ScanEvents"
 
-    ScanEventID = Column(Integer, primary_key=True)
-    MSLevel = Column(Integer, nullable=False)
-    Polarity = Column(Integer, nullable=False)
-    ScanType = Column(Integer, nullable=False)
-    Ionization = Column(Integer, nullable=False)
-    MassAnalyzer = Column(Integer, nullable=False)
-    ActivationType = Column(Integer, nullable=False)
+    ScanEventID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    MSLevel: Mapped[int] = mapped_column(Integer)
+    Polarity: Mapped[int] = mapped_column(Integer)
+    ScanType: Mapped[int] = mapped_column(Integer)
+    Ionization: Mapped[int] = mapped_column(Integer)
+    MassAnalyzer: Mapped[int] = mapped_column(Integer)
+    ActivationType: Mapped[int] = mapped_column(Integer)
 
 
 class SchemaInfo(Base):
     __tablename__ = "SchemaInfo"
 
-    Version = Column(Integer, primary_key=True)
-    Kind = Column(String, nullable=False)
-    Date = Column(DateTime, nullable=False)
-    SoftwareVersion = Column(String, nullable=False)
-    Comment = Column(Text, nullable=False)
+    Version: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    Kind: Mapped[str] = mapped_column(String)
+    Date: Mapped[datetime] = mapped_column(DateTime)
+    SoftwareVersion: Mapped[str] = mapped_column(String)
+    Comment: Mapped[str] = mapped_column(Text)
 
 
 class Spectrum(Base):
     __tablename__ = "Spectra"
 
-    UniqueSpectrumID = Column(Integer, primary_key=True)
-    Spectrum = Column(String, nullable=False)
-    SpectrumHashCode = Column(BigInteger)
+    UniqueSpectrumID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    Spectrum: Mapped[str] = mapped_column(String)
+    SpectrumHashCode: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class SpectrumHeader(Base):
     __tablename__ = "SpectrumHeaders"
 
-    SpectrumID = Column(Integer, primary_key=True)
-    MassPeakID = Column(Integer)
-    ScanEventID = Column(Integer)
-    LastScan = Column(Integer)
-    FirstScan = Column(Integer)
-    RetentionTime = Column(Float)
-    Hidden = Column(Boolean, nullable=False, server_default=text("0"))
-    ScanNumbers = Column(String)
-    Charge = Column(SmallInteger)
-    Mass = Column(Float)
-    CreatingProcessingNodeNumber = Column(Integer, nullable=False)
-    UniqueSpectrumID = Column(Integer, nullable=False, server_default=text("0"))
+    SpectrumID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    MassPeakID: Mapped[int | None] = mapped_column(Integer)
+    ScanEventID: Mapped[int | None] = mapped_column(Integer)
+    LastScan: Mapped[int | None] = mapped_column(Integer)
+    FirstScan: Mapped[int | None] = mapped_column(Integer)
+    RetentionTime: Mapped[float | None] = mapped_column(Float)
+    Hidden: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    ScanNumbers: Mapped[str | None] = mapped_column(String)
+    Charge: Mapped[int | None] = mapped_column(SmallInteger)
+    Mass: Mapped[float | None] = mapped_column(Float)
+    CreatingProcessingNodeNumber: Mapped[int] = mapped_column(Integer)
+    UniqueSpectrumID: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
 
 class SpectrumScore(Base):
     __tablename__ = "SpectrumScores"
 
-    ProcessingNodeNumber = Column(Integer, primary_key=True, nullable=False)
-    SpectrumID = Column(Integer, primary_key=True, nullable=False)
-    Score = Column(Float, nullable=False)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer, primary_key=True)
+    SpectrumID: Mapped[int] = mapped_column(Integer, primary_key=True)
+    Score: Mapped[float] = mapped_column(Float)
 
 
-t_TaxonomyNames = Table(
-    "TaxonomyNames",
-    metadata,
-    Column("TaxonomyID", Integer, nullable=False, index=True),
-    Column("Name", String),
-    Column("NameCategory", Integer, nullable=False),
-)
+class TaxonomyName(Base):
+    __tablename__ = "TaxonomyNames"
+
+    TaxonomyID: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False, index=True)
+    NameCategory: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    Name: Mapped[str | None] = mapped_column(String)
 
 
 class TaxonomyNode(Base):
@@ -762,42 +796,37 @@ class TaxonomyNode(Base):
         Index("IX_TaxonomyNodes_LeftNodeIndex_RightNodeIndex", "LeftNodeIndex", "RightNodeIndex"),
     )
 
-    TaxonomyID = Column(Integer, primary_key=True, unique=True)
-    ParentTaxonomyID = Column(Integer, nullable=False)
-    TaxonomyRank = Column(Integer, nullable=False)
-    LeftNodeIndex = Column(Integer, nullable=False)
-    RightNodeIndex = Column(Integer, nullable=False)
+    TaxonomyID: Mapped[int | None] = mapped_column(Integer, primary_key=True, unique=True)
+    ParentTaxonomyID: Mapped[int] = mapped_column(Integer)
+    TaxonomyRank: Mapped[int] = mapped_column(Integer)
+    LeftNodeIndex: Mapped[int] = mapped_column(Integer)
+    RightNodeIndex: Mapped[int] = mapped_column(Integer)
 
 
-t_WorkflowInfo = Table(
-    "WorkflowInfo",
-    metadata,
-    Column("WorkflowName", String, nullable=False),
-    Column("WorkflowDescription", String, nullable=False),
-    Column("WorkflowState", Integer, nullable=False, server_default=text("0")),
-    Column("WorkflowStartDate", DateTime, nullable=False),
-    Column("WorkflowTemplate", String, nullable=False),
-    Column("User", String, nullable=False),
-    Column("WorkflowGUID", String, nullable=False),
-    Column("MachineGUID", String, nullable=False),
-    Column("MachineName", String, nullable=False),
-    Column("MergeSimilarIdentificationResults", Boolean, nullable=False),
-    Column("IsValid", Boolean, nullable=False),
-    Column("Version", Integer, nullable=False),
-)
+# TODO: Check which is primary key
+class WorkflowInfo(Base):
+    __tablename__ = "WorkflowInfo"
+
+    WorkflowGUID: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    WorkflowName: Mapped[str] = mapped_column(String, nullable=False)
+    WorkflowDescription: Mapped[str] = mapped_column(String, nullable=False)
+    WorkflowState: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    WorkflowStartDate: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    WorkflowTemplate: Mapped[str] = mapped_column(String, nullable=False)
+    User: Mapped[str] = mapped_column(String, nullable=False)
+    MachineGUID: Mapped[str] = mapped_column(String, nullable=False)
+    MachineName: Mapped[str] = mapped_column(String, nullable=False)
+    MergeSimilarIdentificationResults: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    IsValid: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    Version: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class WorkflowMessage(Base):
     __tablename__ = "WorkflowMessages"
 
-    MessageID = Column(Integer, primary_key=True)
-    ProcessingNodeID = Column(Integer, nullable=False)
-    ProcessingNodeNumber = Column(Integer, nullable=False)
-    Time = Column(BigInteger, nullable=False)
-    MessageKind = Column(Integer, nullable=False)
-    Message = Column(String, nullable=False)
-
-
-t_sqlite_sequence = Table(
-    "sqlite_sequence", metadata, Column("name", NullType), Column("seq", NullType)
-)
+    MessageID: Mapped[int | None] = mapped_column(Integer, primary_key=True)
+    ProcessingNodeID: Mapped[int] = mapped_column(Integer)
+    ProcessingNodeNumber: Mapped[int] = mapped_column(Integer)
+    Time: Mapped[int] = mapped_column(BigInteger)
+    MessageKind: Mapped[int] = mapped_column(Integer)
+    Message: Mapped[str] = mapped_column(String)

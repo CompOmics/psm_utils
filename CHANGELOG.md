@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-02-12
+
+### Fixed
+
+- `io.pepxml`: Fix inferring score when first `spectrum_query` item does not have `search_hit` items (fixes #142)
+
+## [1.5.1] - 2025-12-22
+
+### Fixed
+
+- `io.idxml`: Fix compatibility with pyOpenMS 3.5+ for PeptideIdentificationList handling (also see OpenMS/OpenMS#8552).
+- `io.percolator`: Fix missing ScanNr values when using `write_file` (fixes compomics/ms2rescore#235).
+- `io.percolator`: Fix missing style argument when checking whether `PercolatorTabWriter` supports `write_psm`.
+- `io.pepxml`: Fix robustness of `PepXMLReader` against missing params in file.
+
+## [1.5.0.post1] - 2025-10-28
+
+### Fixed
+
+- 🐛 `io.cbor`: Fixed lazy import of optional cbor2 package.
+
+## [1.5.0] - 2025-10-27
+
+### Added
+
+- ✨ `io`: Read/write support for **JSON** and **CBOR** formats. (#125)
+- ✨ `io.percolator`: Added support for Comet-style N- and C-terminal modifications (#121 and #131 by @ATPs)
+
+### Changed
+
+- ♻️ `stats.qvalues`: Set the **regular target–decoy formula** explicitly in Pyteomics when `remove_decoy=False` and apply the **+1 correction** (probability that the first excluded decoy out-scores the threshold PSM). This produces less overly conservative q-values (e.g., on `example_files/msms.txt`). (#128)
+- ♻️ `io.pepxml`: Refactor spectrum naming logic to prefer `spectrumNativeID` when available
+- 🏷️ **Typing**: Adopted full **MyPy** typing across the codebase. (#125)
+- 👷 **CI**: Replaced file-hash–based tests for `io.idxml` with unit tests; added formatting checks. (#125)
+
+### Removed
+
+- 💥 Dropped support for **Python 3.9**. (#125)
+
+### Fixed
+
+- 🐛 `io.mzid`: Treat **MS:1001460 “unknown modification”** as a **delta-mass–designated** modification in peptidoforms so mass calculations remain possible. Previously rendered as `[unknown modification]`. (#126 by @levitsky)
+- 🐛 `io.fragpipe`: Build more comprehensive **ProForma** strings using “Assigned Modifications” from FragPipe output. (fixes #123; #124 by @levitsky)
+- 🐛 `peptidoform`: Allow **residue `X` with a MassModification** to indicate a **gap of known mass** per ProForma §4.2.7; resolves failures computing theoretical mass for non-natural residues (fixes #127). (#130)
+
+## [1.4.1] - 2025-04-15
+
+### Fixed
+
+- Restored compatibility with older Sage versions that have no ion mobility columns (introduced in v1.4.0) (by @rodvrees in #120)
+
+## [1.4.0] - 2025-03-06
+
+### Added
+
+- ✨ `io.sage`: Add parsing of ion mobility values (PR #113)
+
+### Fixed
+
+- 🐛 `io.percolator`: Fix bug in `PercolatorTabWriter` where style parameter was not propagated (fixes #114, PR #117)
+- 📝 Docs: Explicitly set Sphinx configuration path for Read the Docs (fixes #115, PR #118)
+
+## [1.3.0] - 2025-01-20
+
+### Added
+
+- ✨ `io.idxml`: Parse ion mobility from idXML files if present.
+- 🐍 Added support for Python 3.12 and 3.13
+
+### Removed
+
+- 🐍 Removed support for Python 3.7
+
+### Fixed
+
+- 🐛 Fix bug introduced in #102 where dtypes were not coerced anymore by Numpy, which lead to unexpected behavior downstream (e.g., `psm_list["is_decoy"]` would return an array of objects instead of bools)
+- 🩹 Fix potential downstream issues because pepxml-read PSM had `rescoring_features=None` (partially fixes #108)
+
 ## [1.2.0] - 2024-11-19
 
 ### Added

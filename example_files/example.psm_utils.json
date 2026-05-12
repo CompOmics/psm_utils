@@ -1,0 +1,89 @@
+[
+  {
+    "peptidoform": "SSYGSSSNDDSYGSSNNDDSYGSSNK/3",
+    "spectrum_id": "71876",
+    "run": "LFQ_Orbitrap_AIF_Condition_A_Sample_Alpha_01",
+    "spectrum": "71876",
+    "is_decoy": false,
+    "score": 136.160126,
+    "qvalue": 0.0,
+    "pep": 0.0,
+    "precursor_mz": 894.33783,
+    "retention_time": 2800.518555,
+    "ion_mobility": 1e-06,
+    "protein_list": [
+      "P18899"
+    ],
+    "rank": 1,
+    "source": "AlphaDIA",
+    "provenance_data": {
+      "alphadia_filename": "C:\\Users\\ralfg\\git\\psm_utils\\example_files\\alphadia.precursors.tsv"
+    },
+    "metadata": {},
+    "rescoring_features": {
+      "rt_observed": 2800.518555,
+      "mobility_observed": 1e-06,
+      "mz_observed": 894.33783,
+      "charge": 3.0,
+      "delta_rt": 452.909424
+    }
+  },
+  {
+    "peptidoform": "SSQGSSSSTQSAPSETASASK/2",
+    "spectrum_id": "41978",
+    "run": "LFQ_Orbitrap_AIF_Condition_A_Sample_Alpha_01",
+    "spectrum": "41978",
+    "is_decoy": false,
+    "score": 122.27832,
+    "qvalue": 0.0,
+    "pep": 0.0,
+    "precursor_mz": 986.440491,
+    "retention_time": 1647.208252,
+    "ion_mobility": 1e-06,
+    "protein_list": [
+      "Q9ULU4"
+    ],
+    "rank": 1,
+    "source": "AlphaDIA",
+    "provenance_data": {
+      "alphadia_filename": "C:\\Users\\ralfg\\git\\psm_utils\\example_files\\alphadia.precursors.tsv"
+    },
+    "metadata": {},
+    "rescoring_features": {
+      "rt_observed": 1647.208252,
+      "mobility_observed": 1e-06,
+      "mz_observed": 986.440491,
+      "charge": 2.0,
+      "delta_rt": -23.25415
+    }
+  },
+  {
+    "peptidoform": "SSQTSGTNEQSSAIVSAR/2",
+    "spectrum_id": "68554",
+    "run": "LFQ_Orbitrap_AIF_Condition_A_Sample_Alpha_01",
+    "spectrum": "68554",
+    "is_decoy": false,
+    "score": 152.012512,
+    "qvalue": 0.0,
+    "pep": 0.0,
+    "precursor_mz": 905.432312,
+    "retention_time": 2678.317139,
+    "ion_mobility": 1e-06,
+    "protein_list": [
+      "O60763"
+    ],
+    "rank": 1,
+    "source": "AlphaDIA",
+    "provenance_data": {
+      "alphadia_filename": "C:\\Users\\ralfg\\git\\psm_utils\\example_files\\alphadia.precursors.tsv"
+    },
+    "metadata": {},
+    "rescoring_features": {
+      "rt_observed": 2678.317139,
+      "mobility_observed": 1e-06,
+      "mz_observed": 905.432312,
+      "charge": 2.0,
+      "delta_rt": 31.525879
+    }
+  }
+]

@@ -5,19 +5,20 @@ from __future__ import annotations
 import csv
 import logging
 import re
+from collections.abc import Iterator, Sequence
 from itertools import compress
 from pathlib import Path
 
 import numpy as np
 
-from psm_utils.exceptions import PSMUtilsException
 from psm_utils.io._base_classes import ReaderBase
-from psm_utils.psm import PSM, Peptidoform
 from psm_utils.io._utils import set_csv_field_size_limit
+from psm_utils.io.exceptions import PSMUtilsIOException
+from psm_utils.psm import PSM, Peptidoform
 
 set_csv_field_size_limit()
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 # Minimal set of required columns
@@ -49,18 +50,31 @@ RESCORING_FEATURES = [
 
 
 class MSAmandaReader(ReaderBase):
-    """Reader for psm_utils TSV format."""
+    """Reader for MS Amanda CSV result files."""
 
     def __init__(self, filename: str | Path, *args, **kwargs) -> None:
-        super().__init__(filename, *args, **kwargs)
-        self._present_columns = REQUIRED_COLUMNS.copy()
-        self._rescoring_feature_columns = []
-        self._metadata_columns = []
-        self._has_rank_column = None
+        """
+        Initialize reader for MS Amanda CSV result files.
 
-    def __iter__(self):
+        Parameters
+        ----------
+        filename
+            Path to the MS Amanda CSV file.
+        *args
+            Additional positional arguments passed to parent class.
+        **kwargs
+            Additional keyword arguments passed to parent class.
+
+        """
+        super().__init__(filename, *args, **kwargs)
+        self._present_columns: list[str] = REQUIRED_COLUMNS.copy()
+        self._rescoring_feature_columns: list[str] = []
+        self._metadata_columns: list[str] = []
+        self._has_rank_column: bool | None = None
+
+    def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
-        with open(self.filename, "rt") as open_file:
+        with open(self.filename) as open_file:
             if not next(open_file).startswith("#"):
                 open_file.seek(0)
             reader = csv.DictReader(open_file, delimiter="\t")
@@ -68,8 +82,11 @@ class MSAmandaReader(ReaderBase):
             for psm_dict in reader:
                 yield self._get_peptide_spectrum_match(psm_dict)
 
-    def _evaluate_columns(self, columns) -> bool:
-        """Column evaluation for MS Amanda file."""
+    def _evaluate_columns(self, columns: Sequence[str] | None) -> None:
+        """Evaluate and validate columns from MS Amanda file header."""
+        if columns is None:
+            raise MSAmandaParsingError("MS Amanda file does not contain any columns.")
+
         # Check if required columns are present
         column_check = [True if col in columns else False for col in REQUIRED_COLUMNS]
         if not all(column_check):
@@ -91,7 +108,7 @@ class MSAmandaReader(ReaderBase):
             if col not in self._present_columns + self._rescoring_feature_columns
         ]
 
-    def _get_peptide_spectrum_match(self, psm_dict: dict[str, str | float]) -> PSM:
+    def _get_peptide_spectrum_match(self, psm_dict: dict[str, str]) -> PSM:
         """Return a PSM object from MS Amanda CSV PSM file."""
         psm = PSM(
             peptidoform=self._parse_peptidoform(
@@ -120,8 +137,8 @@ class MSAmandaReader(ReaderBase):
         return psm
 
     @staticmethod
-    def _parse_peptidoform(seq, modifications, charge):
-        "Parse MSAmanda sequence, modifications and charge to proforma sequence"
+    def _parse_peptidoform(seq: str, modifications: str, charge: str) -> Peptidoform:
+        """Parse MSAmanda sequence, modifications and charge to ProForma sequence."""
         peptide = [""] + [aa.upper() for aa in seq] + [""]
         pattern = re.compile(
             r"(?:(?:(?P<site>[A-Z])(?P<loc>\d+))|(?P<term>[CN]-Term))\((?P<mod_name>[^|()]+)\|(?P<mz>[-0-9.]+)\|(?P<type>variable|fixed)\);?"
@@ -129,12 +146,12 @@ class MSAmandaReader(ReaderBase):
 
         for match in pattern.finditer(modifications):
             if match.group("term") == "N-Term":
-                peptide[0] = peptide[0] + f'[{match.group("mod_name")}]'
+                peptide[0] = peptide[0] + f"[{match.group('mod_name')}]"
             elif match.group("term") == "C-Term":
-                peptide[-1] = peptide[-1] + f'[{match.group("mod_name")}]'
+                peptide[-1] = peptide[-1] + f"[{match.group('mod_name')}]"
             if match.group("loc") is not None:
                 peptide[int(match.group("loc"))] = (
-                    peptide[int(match.group("loc"))] + f'[{match.group("mod_name")}]'
+                    peptide[int(match.group("loc"))] + f"[{match.group('mod_name')}]"
                 )
 
         peptide[0] = peptide[0] + "-" if peptide[0] else ""
@@ -144,7 +161,7 @@ class MSAmandaReader(ReaderBase):
         return Peptidoform(proforma_seq + f"/{charge}")
 
 
-class MSAmandaParsingError(PSMUtilsException):
-    """Error while parsing MS Amanda CSV PSM file."""
+class MSAmandaParsingError(PSMUtilsIOException):
+    """Error in parsing MS Amanda CSV file."""
 
     pass

@@ -2,13 +2,14 @@ import csv
 import sys
 
 
-def set_csv_field_size_limit():
+def set_csv_field_size_limit() -> None:
     """
-    Sets the maximum field size limit for reading CSV files.
+    Set the maximum field size limit for reading CSV files.
 
-    Note:
-        This function should be called before reading any CSV files to ensure that the field size
-        limit is properly set.
+    Notes
+    -----
+    This function should be called before reading any CSV files to ensure that the field size
+    limit is properly set.
 
     """
     max_int = sys.maxsize
