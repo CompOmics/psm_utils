@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-05-13
+
+### Fixed
+
+- `io.fragpipe`: Fix parsing of modifications (support both splitting on `,` and `, `).
+- `io.tsv`: Fix empty string values in `provenance_data` and `metadata` being lost (converted to `None`) when reading TSV files; empty rescoring feature values are now parsed as `NaN` (fixes #145).
+
 ## [1.5.2] - 2026-02-12
 
 ### Fixed

@@ -51,6 +51,7 @@ from __future__ import annotations
 import ast
 import csv
 import logging
+import math
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TextIO
@@ -110,14 +111,14 @@ class TSVReader(ReaderBase):
         parsed_entry: dict[str, Any] = {}
         provenance_data: dict[str, str | None] = {}
         metadata: dict[str, str | None] = {}
-        rescoring_features: dict[str, str | None] = {}
+        rescoring_features: dict[str, Any] = {}
         for k, v in entry.items():
             if k.startswith("provenance:"):
-                provenance_data[k[11:]] = v
+                provenance_data[k[11:]] = v if v is not None else ""
             elif k.startswith("meta:"):
-                metadata[k[5:]] = v
+                metadata[k[5:]] = v if v is not None else ""
             elif k.startswith("rescoring:"):
-                rescoring_features[k[10:]] = v
+                rescoring_features[k[10:]] = v if v is not None else math.nan
             else:
                 parsed_entry[k] = v
 
