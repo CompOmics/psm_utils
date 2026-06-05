@@ -20,16 +20,16 @@ classifiers = [
 dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = [
-    "click",
-    "lxml",
-    "numpy",
-    "pandas",
-    "psims",
-    "pyarrow",
-    "pydantic >= 2",
-    "pyteomics >= 4",
-    "rich",
-    "sqlalchemy >= 2",
+    "click >= 8, < 9",
+    "lxml >= 4, < 7",
+    "numpy >= 1.23, < 3",
+    "pandas >= 1.5, < 4",
+    "psims >= 1, < 2",
+    "pyarrow >= 11",
+    "pydantic >= 2, < 3",
+    "pyteomics >= 4, < 5",
+    "rich >= 12, < 16",
+    "sqlalchemy >= 2, < 3",
 ]
 
 [project.optional-dependencies]
