@@ -75,7 +75,7 @@ class PepXMLReader(ReaderBase):
             for spectrum_query in reader:
                 if "search_hit" not in spectrum_query:
                     continue
-                score_keys = spectrum_query["search_hit"][0]["search_score"].keys()
+                score_keys = list(spectrum_query["search_hit"][0]["search_score"].keys())
                 break
             else:
                 score_keys = []
