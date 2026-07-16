@@ -92,6 +92,7 @@ Supported file formats
  `AlphaDIA precursors TSV <https://alphadia.readthedocs.io/en/latest/quickstart.html#output-files>`_                   ``alphadia``             ✅              ❌
  `CBOR <https://psm-utils.readthedocs.io/en/stable/api/psm_utils.io#module-psm_utils.io.cbor>`_                        ``cbor``                 ✅              ✅                Requires the optional ``cbor2`` dependency (``pip install psm-utils[cbor]``)
  `DIA-NN TSV <https://github.com/vdemichev/DiaNN#output>`_                                                             ``diann``                ✅              ❌
+ `DIA-NN report.parquet <https://github.com/vdemichev/DiaNN#output>`_                                                  ``diann_parquet``        ✅              ❌
  `FlashLFQ generic TSV <https://github.com/smith-chem-wisc/FlashLFQ/wiki/Identification-Input-Formats>`_               ``flashlfq``             ✅              ✅
  `FragPipe PSM TSV <https://fragpipe.nesvilab.org/docs/tutorial_fragpipe_outputs.html#psmtsv/>`_                       ``fragpipe``             ✅              ❌
  `ionbot CSV <https://ionbot.cloud/>`_                                                                                 ``ionbot``               ✅              ❌

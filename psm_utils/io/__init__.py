@@ -182,6 +182,12 @@ FILETYPES: dict[str, FileType] = {
         "extension": ".tsv",
         "filename_pattern": r"^.*(?:_|\.)?diann\.tsv$",
     },
+    "diann_parquet": {
+        "reader": diann.DIANNParquetReader,
+        "writer": None,
+        "extension": ".parquet",
+        "filename_pattern": r"^.*(?:_|\.)?report\.parquet$",
+    },
     "parquet": {  # List after more specific Parquet patterns to avoid matching conflicts
         "reader": parquet.ParquetReader,
         "writer": parquet.ParquetWriter,
