@@ -15,13 +15,15 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
 
+from lxml import etree
+from lxml.etree import _Element
 from psims.mzid import MzIdentMLWriter  # type: ignore[import]
 from pyteomics import mzid  # type: ignore[import]
 from rich.progress import Progress
 
 from psm_utils import __version__
 from psm_utils.io._base_classes import ReaderBase, WriterBase
-from psm_utils.io.exceptions import PSMUtilsIOException, ModificationException
+from psm_utils.io.exceptions import ModificationException, PSMUtilsIOException
 from psm_utils.peptidoform import Peptidoform
 from psm_utils.psm import PSM
 from psm_utils.psm_list import PSMList
@@ -399,6 +401,549 @@ class MzidReader(ReaderBase):
     @staticmethod
     def _infer_pep_name(keys: list[str]) -> str | None:
         """Infer PEP (Posterior Error Probability) field name from available PSM keys."""
+        for pep in PEP_TERMS:
+            if pep in keys:
+                return pep
+        return None
+
+
+class MzidQuickReader(ReaderBase):
+    """
+    Reader for HUPO-PSI mzIdentML format PSM files.
+
+    This version uses a quick parsing approach using pyteomics.
+    """
+
+    def __init__(
+        self, filename: str | Path, *args, score_key: str | None = None, **kwargs
+    ) -> None:
+        """
+        Quick, and not totally complete reader for mzIdentML PSM files.
+
+        Parameters
+        ----------
+        filename
+            Path to PSM file.
+        *args
+            Additional positional arguments passed to parent class.
+        score_key
+            Name of the score metric to use as PSM score. If not provided, the score metric is
+            inferred from the file if one of the child parameters of ``MS:1001143`` is present.
+        **kwargs
+            Additional keyword arguments passed to parent class.
+
+        Examples
+        --------
+        MzidQuickReader supports iteration like MzidReader (TODO: add these here...)
+
+        Notes
+        -----
+        - :py:class:`MzidReader` looks for the ``retention time`` or ``scan start time`` cvParams
+          in both SpectrumIdentificationResult and SpectrumIdentificationItem levels. Note that
+          according to the mzIdentML specification document (v1.1.1) neither cvParams are expected
+          to be present at either levels.
+        - For the :py:attr:`PSM.spectrum_id` property, the ``spectrum title`` cvParam is preferred
+          over the ``spectrumID`` attribute, as these titles always match the titles in the  peak
+          list files. ``spectrumID`` is then saved in ``PSM.metadata["mzid_spectrum_id"]``.
+          If ``spectrum title`` is absent, ``spectrumID`` is saved to :py:attr:`PSM.spectrum_id`.
+
+        """
+        super().__init__(filename, *args, **kwargs)
+        self._non_metadata_keys: set[str] = {"ContactRole", "passThreshold"}
+        self._score_key = score_key
+        self._rt_key: str | None = None
+        self._spectrum_rt_key: str | None = None
+        self._qvalue_key: str | None = None
+        self._pep_key: str | None = None
+        self._im_key: str | None = None
+        self._source: str | None = None
+
+        # some helper-dictionaries
+        self.peptides_dict: dict[str, dict[str, Any]] = {}
+        self.peptide_evidences_dict: dict[str, tuple[str, bool | None]] = {}
+        self.db_sequences_dict: dict[str, str | None] = {}
+        self.spectra_data_dict: dict[str, str | None] = {}
+
+    def __iter__(self):
+        """
+        Iterate over file and return PSMs one-by-one.
+
+        Notes
+        -----
+        Reference elements (``Peptide``, ``PeptideEvidence``, ``DBSequence``, ``SpectraData``,
+        ``AnalysisSoftware``) and ``SpectrumIdentificationResult`` elements are parsed in a single
+        streaming pass, relying on the mzIdentML schema guaranteeing that ``SequenceCollection``
+        and ``DataCollection/Inputs`` (which hold the former) always precede
+        ``DataCollection/AnalysisData`` (which holds the latter) in document order. By the
+        time a ``SpectrumIdentificationResult`` is encountered, all reference dicts are
+        therefore already fully populated.
+
+        """
+        first_sir = True
+
+        for _, element in etree.iterparse(
+            str(self.filename),
+            events=("end",),
+            tag=(
+                "{*}Peptide",
+                "{*}PeptideEvidence",
+                "{*}DBSequence",
+                "{*}SpectraData",
+                "{*}AnalysisSoftware",
+                "{*}SpectrumIdentificationResult",
+            ),
+        ):
+            tag = element.tag.rpartition("}")[2]
+
+            if tag == "SpectrumIdentificationResult":
+                spectrum = self._parse_sir(element)
+
+                if first_sir:
+                    # Parse spectrum metadata
+                    self._get_toplevel_non_metadata_keys(spectrum.keys())
+
+                    # Parse PSM non-metadata keys, rt key and score key
+                    self._get_non_metadata_keys(spectrum["SpectrumIdentificationItem"][0].keys())
+                    first_sir = False
+
+                spectrum_id = spectrum["spectrumID"]
+                spectrum_title = (
+                    spectrum["spectrum title"] if "spectrum title" in spectrum else None
+                )
+                run = Path(spectrum["location"]).stem if "location" in spectrum else None
+                rt = (
+                    float(spectrum[self._spectrum_rt_key])
+                    if self._spectrum_rt_key and self._spectrum_rt_key in spectrum
+                    else None
+                )
+                ion_mobility = (
+                    float(spectrum[self._im_key])
+                    if self._im_key and self._im_key in spectrum
+                    else None
+                )
+
+                # Parse PSMs from spectrum
+                for entry in spectrum["SpectrumIdentificationItem"]:
+                    yield self._get_peptide_spectrum_match(
+                        spectrum_id, spectrum_title, run, rt, ion_mobility, entry
+                    )
+            elif tag == "Peptide":
+                pep_id, pep_data = MzidQuickReader._parse_peptide(element)
+                self.peptides_dict[pep_id] = pep_data
+            elif tag == "PeptideEvidence":
+                pep_ev_id, pep_ev_data = MzidQuickReader._parse_peptideevidence(element)
+                self.peptide_evidences_dict[pep_ev_id] = pep_ev_data
+            elif tag == "DBSequence":
+                dbseq_id, dbseq_data = MzidQuickReader._parse_dbsequence(element)
+                self.db_sequences_dict[dbseq_id] = dbseq_data
+            elif tag == "SpectraData":
+                specdata_id, specdata = MzidQuickReader._parse_spectradata(element)
+                self.spectra_data_dict[specdata_id] = specdata
+            elif tag == "AnalysisSoftware" and self._source is None:
+                # only set the source if it hasn't been set yet, and hence only the first AnalysisSoftware element will be used
+                self._source = cast(str | None, element.get("name"))
+
+            # Free memory: clear the element itself, then drop now-empty preceding siblings
+            # from the parent so memory use stays bounded on very large files.
+            element.clear()
+            while element.getprevious() is not None:
+                del element.getparent()[0]
+
+    @staticmethod
+    def _parse_peptide(peptide_element: _Element) -> tuple[str, dict[str, Any]]:
+        pep_id: str | None = None
+        attributes: dict[str, Any] = {}
+        attributes["PeptideSequence"] = None
+        attributes["Modification"] = []
+
+        # parse the Peptide's attributes
+        for idx, item in peptide_element.items():
+            if idx == "id":
+                pep_id = cast(str, item)
+
+        for event, item in etree.iterwalk(
+            peptide_element,
+            events=("start", "end"),
+            tag=("{*}PeptideSequence", "{*}Modification", "{*}cvParam", "{*}userParam"),
+        ):
+            if event == "start":
+                # strip the namespace
+                tag = item.tag.rpartition("}")[2]
+
+                if tag == "PeptideSequence":
+                    attributes["PeptideSequence"] = item.text
+                elif tag == "Modification":
+                    attributes["Modification"].append(MzidQuickReader._parse_modification(item))
+                elif tag == "cvParam" or tag == "userParam":
+                    param_name, param_val = MzidQuickReader._parse_param_name_and_value(item)
+                    if param_name is not None:
+                        attributes[param_name] = param_val
+            else:
+                item.clear()
+
+        return cast(str, pep_id), attributes
+
+    @staticmethod
+    def _parse_modification(modification: _Element) -> tuple[str | None, float | None, str | None]:
+        # A Modification record is fixed-shape (no cvParam/userParam passthrough), so
+        # it's returned as a plain (location, monoisotopic_mass_delta, name) tuple.
+        # Only these three are ever read downstream right now (see _parse_peptidoform).
+        location = cast(str | None, modification.get("location"))
+        mono_mass_delta_text = modification.get("monoisotopicMassDelta")
+        mono_mass_delta = float(mono_mass_delta_text) if mono_mass_delta_text is not None else None
+        name: str | None = None
+
+        for event, item in etree.iterwalk(modification, events=("start", "end")):
+            if event == "start":
+                tag = item.tag.rpartition("}")[2]
+
+                if tag == "cvParam":
+                    name = cast(str | None, item.get("name"))
+            else:
+                item.clear()
+
+        return location, mono_mass_delta, name
+
+    @staticmethod
+    def _parse_elements_attributes(param: _Element) -> dict[str, Any]:
+        return dict(cast(dict[str, str], param.attrib))
+
+    @staticmethod
+    def _parse_peptideevidence(
+        pepevidence_element: _Element,
+    ) -> tuple[str, tuple[str, bool | None]]:
+        # Only dBSequence_ref (consumed as a lookup key) and isDecoy (read downstream)
+        # are ever used. PeptideEvidence's other attributes -- peptide_ref, start, end,
+        # pre, post, frame, translationTable_ref -- are not used anywhere in psm_utils (yet).
+        pep_ev_id = cast(str, pepevidence_element.get("id"))
+        db_sequence_ref = cast(str, pepevidence_element.get("dBSequence_ref"))
+        is_decoy_text = pepevidence_element.get("isDecoy")
+        is_decoy = (
+            MzidQuickReader._text_to_boolean(is_decoy_text) if is_decoy_text is not None else None
+        )
+
+        return pep_ev_id, (db_sequence_ref, is_decoy)
+
+    @staticmethod
+    def _text_to_boolean(text: str) -> bool:
+        return text.lower() in ("yes", "true", "t", "1")
+
+    @staticmethod
+    def _parse_dbsequence(dbseq_element: _Element) -> tuple[str, str | None]:
+        # Only accession is ever read downstream (via the merge chain into
+        # _get_accessions_from_peptide_evidence_ref), no other attributes needed right now.
+        dbseq_id = cast(str, dbseq_element.get("id"))
+        accession = cast(str | None, dbseq_element.get("accession"))
+        return dbseq_id, accession
+
+    @staticmethod
+    def _parse_spectradata(spectradata_element: _Element) -> tuple[str, str | None]:
+        # Only location is ever read downstream (spectrum["location"], used to derive `run`).
+        specdata_id = cast(str, spectradata_element.get("id"))
+        location = cast(str | None, spectradata_element.get("location"))
+        return specdata_id, location
+
+    def _parse_sir(self, sir_element: _Element) -> dict:
+        # parse the SearchDB's attributes
+        attributes = MzidQuickReader._parse_elements_attributes(sir_element)
+        attributes["SpectrumIdentificationItem"] = []
+
+        if (
+            "spectraData_ref" in attributes.keys()
+            and attributes["spectraData_ref"] in self.spectra_data_dict.keys()
+        ):
+            attributes["location"] = self.spectra_data_dict[attributes["spectraData_ref"]]
+            del attributes["spectraData_ref"]
+
+        for event, item in etree.iterwalk(
+            sir_element,
+            events=("start", "end"),
+            tag=("{*}SpectrumIdentificationItem", "{*}cvParam", "{*}userParam"),
+        ):
+            if event == "start":
+                # strip the namespace
+                tag = item.tag.rpartition("}")[2]
+
+                if tag == "SpectrumIdentificationItem":
+                    attributes["SpectrumIdentificationItem"].append(self._parse_sii(item))
+                elif (tag == "cvParam") or (tag == "userParam"):
+                    param_name, param_val = MzidQuickReader._parse_param_name_and_value(item)
+                    if param_name is not None:
+                        attributes[param_name] = param_val
+            else:
+                item.clear()
+
+        return attributes
+
+    def _parse_sii(self, sii_element: _Element) -> dict:
+        # parse the SearchDB's attributes
+        attributes = MzidQuickReader._parse_elements_attributes(sii_element)
+        del attributes["id"]
+
+        # transform some types
+        if "calculatedMassToCharge" in attributes.keys():
+            attributes["calculatedMassToCharge"] = float(attributes["calculatedMassToCharge"])
+        if "calculatedPI" in attributes.keys():
+            attributes["calculatedPI"] = float(attributes["calculatedPI"])
+        if "chargeState" in attributes.keys():
+            attributes["chargeState"] = int(attributes["chargeState"])
+        if "experimentalMassToCharge" in attributes.keys():
+            attributes["experimentalMassToCharge"] = float(attributes["experimentalMassToCharge"])
+        if "rank" in attributes.keys():
+            attributes["rank"] = int(attributes["rank"])
+
+        # get the peptide information
+        peptide_data = self.peptides_dict[attributes["peptide_ref"]]
+        attributes |= peptide_data
+        del attributes["peptide_ref"]
+
+        attributes["PeptideEvidenceRef"] = []
+
+        for event, item in etree.iterwalk(
+            sii_element,
+            events=("start", "end"),
+            tag=("{*}PeptideEvidenceRef", "{*}cvParam", "{*}userParam"),
+        ):
+            if event == "start":
+                # strip the namespace
+                tag = item.tag.rpartition("}")[2]
+
+                if tag == "PeptideEvidenceRef":
+                    pep_evidence_data = self._parse_peptide_evidence_ref(item)
+                    attributes["PeptideEvidenceRef"].append(pep_evidence_data)
+                elif (tag == "cvParam") or (tag == "userParam"):
+                    param_name, param_val = MzidQuickReader._parse_param_name_and_value(item)
+                    if param_name is not None:
+                        attributes[param_name] = param_val
+            else:
+                item.clear()
+
+        return attributes
+
+    @staticmethod
+    def _parse_param_name_and_value(param_item: _Element) -> tuple[str | None, str | float | None]:
+        param_name = cast(str | None, param_item.get("name"))
+        param_val: str | float | None = None
+        if param_name is not None:
+            raw_val = cast(str | None, param_item.get("value"))
+            if raw_val is None:
+                param_val = ""
+            else:
+                try:
+                    param_val = float(raw_val)
+                except ValueError:
+                    param_val = str(raw_val)
+
+        return param_name, param_val
+
+    def _parse_peptide_evidence_ref(
+        self, pepevidenceref_item: _Element
+    ) -> tuple[bool | None, str | None]:
+        # A PeptideEvidenceRef record has no child tags, so it's returned as a plain
+        # (is_decoy, accession) tuple. PeptideSequence/Modification are already available on
+        # the SII directly (via _parse_sii's own peptide merge).
+        peptide_evidence_ref = cast(str, pepevidenceref_item.get("peptideEvidence_ref"))
+        db_sequence_ref, is_decoy = self.peptide_evidences_dict[peptide_evidence_ref]
+        accession = self.db_sequences_dict[db_sequence_ref]
+
+        return is_decoy, accession
+
+    @staticmethod
+    def _parse_peptidoform(
+        seq: str,
+        modification_list: list[tuple[str | None, float | None, str | None]],
+        charge: int | None,
+    ) -> Peptidoform:
+        """Parse mzid sequence and modifications to Peptidoform."""
+        peptide = [""] + list(seq) + [""]
+
+        # Add modification labels
+        for location, mono_mass_delta, name in modification_list:
+            if name and name != "unknown modification":
+                tag = f"[{name}]"
+            elif mono_mass_delta is not None:
+                tag = f"[{mono_mass_delta:+.5f}]"
+            else:
+                raise ModificationException(
+                    f"Not enough information about modification: "
+                    f"{(location, mono_mass_delta, name)}"
+                )
+            peptide[int(cast(str, location))] += tag
+
+        # Add dashes between residues and termini, and join sequence
+        peptide[0] = peptide[0] + "-" if peptide[0] else ""
+        peptide[-1] = "-" + peptide[-1] if peptide[-1] else ""
+        proforma_seq = "".join(peptide)
+
+        # Add charge state
+        if charge:
+            proforma_seq += f"/{charge}"
+
+        return Peptidoform(proforma_seq)
+
+    @staticmethod
+    def _get_accessions_from_peptide_evidence_ref(
+        peptide_evidence_list: list[tuple[bool | None, str | None]],
+    ) -> tuple[bool, list[str]]:
+        """
+        Parse PeptideEvidence list of PSM.
+
+        Notes
+        -----
+        If multiple PeptideEvidence entries are associated with the PSM, the PSM is only considered
+        a decoy entry if ALL PeptideEvidence entries are decoy entries. If a target PeptideEvidence
+        entry is present, it should get priority over decoy entries. In theory, no overlap between
+        target and decoy peptide sequence should be present in the search space, although this
+        might not have been filtered for by the search engine.
+
+        """
+        isdecoy = all(is_decoy for is_decoy, _ in peptide_evidence_list)
+        protein_list = [
+            accession for _, accession in peptide_evidence_list if accession is not None
+        ]
+        return isdecoy, protein_list
+
+    def _get_peptide_spectrum_match(
+        self,
+        spectrum_id: str,
+        spectrum_title: str | None,
+        run: str | None,
+        rt: float | None,
+        ion_mobility: float | None,
+        spectrum_identification_item: dict[str, str | float | list[Any]],
+    ) -> PSM:
+        """Parse single mzid entry to :py:class:`~psm_utils.peptidoform.Peptidoform`."""
+        sii = spectrum_identification_item
+        try:
+            modifications = cast(
+                list[tuple[str | None, float | None, str | None]], sii["Modification"]
+            )
+        except KeyError:
+            modifications = []
+        sequence = cast(str, sii["PeptideSequence"])
+        charge: int | None = cast(int, sii["chargeState"]) if "chargeState" in sii else None
+        peptidoform = self._parse_peptidoform(sequence, modifications, charge)
+        is_decoy, protein_list = self._get_accessions_from_peptide_evidence_ref(
+            cast(list[tuple[bool | None, str | None]], sii["PeptideEvidenceRef"])
+        )
+        try:
+            precursor_mz = sii["experimentalMassToCharge"]
+        except KeyError:
+            precursor_mz = None
+
+        # Override spectrum-level RT if present at PSM level
+        if self._rt_key and self._rt_key in sii:
+            rt = cast(float, sii[self._rt_key])
+
+        metadata = {col: str(sii[col]) for col in sii.keys() if col not in self._non_metadata_keys}
+
+        # Prefer spectrum title (identical to titles in MGF), fall back to spectrumID
+        if spectrum_title:
+            metadata["mzid_spectrum_id"] = spectrum_id
+            psm_spectrum_id = spectrum_title
+        else:
+            psm_spectrum_id = spectrum_id
+
+        score = None
+        if self._score_key and self._score_key in sii:
+            score = sii[self._score_key]
+
+        psm = PSM(
+            peptidoform=peptidoform,
+            spectrum_id=psm_spectrum_id,
+            run=run,
+            is_decoy=is_decoy,
+            score=score,
+            qvalue=sii[self._qvalue_key] if self._qvalue_key and self._qvalue_key in sii else None,
+            pep=sii[self._pep_key] if self._pep_key and self._pep_key in sii else None,
+            precursor_mz=precursor_mz,
+            retention_time=rt,
+            ion_mobility=ion_mobility,
+            protein_list=protein_list,
+            rank=sii["rank"] if "rank" in sii else None,
+            source=self._source,
+            provenance_data={"mzid_filename": str(self.filename)},
+            metadata=metadata,
+        )
+        return psm
+
+    def _get_non_metadata_keys(self, keys: list):
+        """Gather all the keys at PSM-level that should not be written to metadata."""
+        # All keys required to create PSM object
+        default_keys = [
+            "chargeState",
+            "rank",
+            "PeptideSequence",
+            "experimentalMassToCharge",
+            "PeptideEvidenceRef",
+            "Modification",
+        ]
+        # Get the score key and add to default keys
+        if not self._score_key:
+            self._score_key = self._infer_score_name(keys)
+        if self._score_key:
+            default_keys.append(self._score_key)
+        else:
+            logger.warning(
+                "No known score metric found in mzIdentML file. Scores will be set to None."
+            )
+
+        # Get the q-value key and add to default keys
+        self._qvalue_key = self._infer_qvalue_name(keys)
+        if self._qvalue_key:
+            default_keys.append(self._qvalue_key)
+
+        # Get the PEP key and add to default keys
+        self._pep_key = self._infer_pep_name(keys)
+        if self._pep_key:
+            default_keys.append(self._pep_key)
+
+        # Get retention time key
+        for rt_key in ["retention time", "scan start time"]:
+            if rt_key in keys:
+                self._rt_key = rt_key
+                default_keys.append(rt_key)
+                break
+
+        # Keys that are not necessary for metadata
+        self._non_metadata_keys.update(default_keys)
+
+    def _get_toplevel_non_metadata_keys(self, keys: list):
+        """Gather all keys at spectrum-level that should not be written to metadata."""
+        # Check if RT is encoded in spectrum metadata
+        for key in ["retention time", "scan start time"]:
+            if key in keys:
+                self._spectrum_rt_key = key
+                self._non_metadata_keys.add(key)
+                break
+
+        # Check if ion mobility is encoded in spectrum metadata
+        for im_key in ["inverse reduced ion mobility"]:
+            if im_key in keys:
+                self._im_key = im_key
+                self._non_metadata_keys.add(im_key)
+                break
+
+    @staticmethod
+    def _infer_score_name(keys) -> str | None:
+        """Infer the score from the list of known PSM scores."""
+        lower_keys = {key.lower(): key for key in keys}
+        for score in STANDARD_SEARCHENGINE_SCORES:
+            if score in lower_keys:
+                return lower_keys[score]
+        return None
+
+    @staticmethod
+    def _infer_qvalue_name(keys) -> str | None:
+        """Infer the q-value term from the list of known terms."""
+        for qvalue in Q_VALUE_TERMS:
+            if qvalue in keys:
+                return qvalue
+        return None
+
+    @staticmethod
+    def _infer_pep_name(keys) -> str | None:
+        """Infer the PEP term from the list of known terms."""
         for pep in PEP_TERMS:
             if pep in keys:
                 return pep
