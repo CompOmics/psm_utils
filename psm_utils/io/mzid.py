@@ -21,7 +21,7 @@ from rich.progress import Progress
 
 from psm_utils import __version__
 from psm_utils.io._base_classes import ReaderBase, WriterBase
-from psm_utils.io.exceptions import PSMUtilsIOException, ModificationException
+from psm_utils.io.exceptions import ModificationException, PSMUtilsIOException
 from psm_utils.peptidoform import Peptidoform
 from psm_utils.psm import PSM
 from psm_utils.psm_list import PSMList
@@ -656,7 +656,7 @@ class MzidWriter(WriterBase):
     ) -> list[dict[str, Any]]:
         """Create SpectrumIdentificationItem for each candidate PSM."""
         peptide = candidate_psm["peptidoform"].proforma
-        params = list(candidate_psm["metadata"].items()) if candidate_psm.get("metadata") else []
+        params = list(candidate_psm["metadata"].items()) if candidate_psm["metadata"] else []
         params = [{k: v} for k, v in params]
 
         for key, label, unit in [
@@ -664,7 +664,7 @@ class MzidWriter(WriterBase):
             ("qvalue", "PSM-level q-value", None),
             ("pep", "PSM-level local FDR", None),
         ]:
-            value = candidate_psm.get(key)
+            value = candidate_psm[key]
             if value is not None:
                 param = {"name": label, "value": value}
                 if unit:
