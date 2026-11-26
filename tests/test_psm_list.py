@@ -139,3 +139,14 @@ class TestPSMList:
         psm_list["collection"] = [None, None, None, None]
         psm_list.set_ranks(lower_score_better=True)
         np.testing.assert_equal(psm_list["rank"], np.array([1, 2, 2, 1]))
+
+
+def test_rename_modifications_logs_once_for_psm_list(caplog):
+    psms = PSMList(
+        psm_list=[PSM(peptidoform="M[ox]C[already-custom]K", spectrum_id=str(i)) for i in range(3)]
+    )
+    with caplog.at_level("INFO", logger="psm_utils.psm_list"):
+        psms.rename_modifications({"ox": "Oxidation"})
+        psms.rename_modifications({})
+    assert [p.peptidoform.proforma for p in psms] == ["M[Oxidation]C[already-custom]K"] * 3
+    assert sum("Renaming modifications" in record.message for record in caplog.records) == 1

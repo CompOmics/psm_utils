@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterator, Sequence
 from typing import cast, overload
@@ -13,6 +14,8 @@ from pyteomics import auxiliary, proforma  # type: ignore[import]
 from rich.pretty import pretty_repr
 
 from psm_utils.psm import NUMPY_DTYPES, PSM
+
+logger = logging.getLogger(__name__)
 
 
 class PSMList(BaseModel):
@@ -303,6 +306,12 @@ class PSMList(BaseModel):
         psm_utils.peptidoform.Peptidoform.rename_modifications
 
         """
+        if mapping and self.psm_list:
+            logger.info(
+                "Renaming modifications for %d PSMs using %d label mappings.",
+                len(self.psm_list),
+                len(mapping),
+            )
         for psm in self.psm_list:
             psm.peptidoform.rename_modifications(mapping)
 

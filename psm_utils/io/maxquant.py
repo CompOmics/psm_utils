@@ -5,11 +5,12 @@ from __future__ import annotations
 import csv
 import logging
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from itertools import compress
 from pathlib import Path
 
 import numpy as np
+from pyteomics import proforma  # type: ignore[import]
 
 from psm_utils.exceptions import PSMUtilsException
 from psm_utils.io._base_classes import ReaderBase
@@ -34,6 +35,51 @@ MSMS_REQUIRED_COLUMNS = [
     "Score",
 ]
 
+_NAMED_MODIFICATIONS = {
+    "Acetyl (K)": "Acetyl",
+    "Acetyl (N-term)": "Acetyl",
+    "Acetyl (Peptide N-term)": "Acetyl",
+    "Acetyl (Protein N-term)": "Acetyl",
+    "Amidated (C-term)": "Amidated",
+    "Amidated (Peptide C-term)": "Amidated",
+    "Amidated (Protein C-term)": "Amidated",
+    "Carbamidomethyl (C)": "Carbamidomethyl",
+    "Carbamyl (N-term)": "Carbamyl",
+    "Deamidated (NQ)": "Deamidated",
+    "Deamidation (N)": "Deamidated",
+    "Deamidation (NQ)": "Deamidated",
+    "Deamidation (Q)": "Deamidated",
+    "Deamidation": "Deamidated",
+    "Gln->pyro-Glu": "Gln->pyro-Glu",
+    "Glu->pyro-Glu": "Glu->pyro-Glu",
+    "GlyGly (K)": "GG",
+    "Oxidation (M)": "Oxidation",
+    "Oxidation (P)": "Oxidation",
+    "Phospho (S)": "Phospho",
+    "Phospho (ST)": "Phospho",
+    "Phospho (STY)": "Phospho",
+    "Phospho (T)": "Phospho",
+    "Phospho (Y)": "Phospho",
+}
+
+# An underscore denotes an N-terminal tag. Some short codes depend on their site.
+_SHORT_MODIFICATIONS = {
+    ("ac", "_"): "Acetyl",
+    ("ac", "K"): "Acetyl",
+    ("ca", "_"): "Carbamyl",
+    ("ca", "C"): "Carbamidomethyl",
+    ("cm", "C"): "Carbamidomethyl",
+    ("de", "N"): "Deamidated",
+    ("de", "Q"): "Deamidated",
+    ("gl", "_Q"): "Gln->pyro-Glu",
+    ("gl", "K"): "GG",
+    ("ox", "M"): "Oxidation",
+    ("ox", "P"): "Oxidation",
+    ("ph", "S"): "Phospho",
+    ("ph", "T"): "Phospho",
+    ("ph", "Y"): "Phospho",
+}
+
 
 class MSMSReader(ReaderBase):
     """Reader for MaxQuant msms.txt PSM files."""
@@ -42,6 +88,7 @@ class MSMSReader(ReaderBase):
         self,
         filename: str | Path,
         *args,
+        modification_mapping: Mapping[str, str] | None = None,
         **kwargs,
     ) -> None:
         """
@@ -53,6 +100,9 @@ class MSMSReader(ReaderBase):
             Path to the MaxQuant msms.txt PSM file.
         *args
             Additional positional arguments passed to parent class.
+        modification_mapping
+            Optional exact MaxQuant label to ProForma tag mappings. Supplied entries
+            override built-in mappings. Pass an empty mapping to keep raw labels.
         **kwargs
             Additional keyword arguments passed to parent class.
 
@@ -76,10 +126,15 @@ class MSMSReader(ReaderBase):
 
         """
         super().__init__(filename, *args, **kwargs)
+        self._map_modifications = modification_mapping is None or bool(modification_mapping)
+        self._modification_overrides = dict(modification_mapping or {})
+        self._checked_labels: set[str] = set()
         self._validate_msms()
 
     def __iter__(self) -> Iterator[PSM]:
         """Iterate over file and return PSMs one-by-one."""
+        if self._map_modifications:
+            logger.info("Applying MaxQuant modification mapping to %s", self.filename)
         with open(self.filename) as msms_in:
             reader = csv.DictReader(msms_in, delimiter="\t")
             for psm_dict in reader:
@@ -106,9 +161,21 @@ class MSMSReader(ReaderBase):
 
     def _get_peptide_spectrum_match(self, psm_dict: dict[str, str]) -> PSM:
         """Return a PSM object from MaxQuant msms.txt PSM file."""
+        resolve_label = None
+        if self._map_modifications:
+            summary = psm_dict.get("Modifications") or ""
+            reported = {
+                re.sub(r"^\d+\s+", "", item.strip())
+                for item in re.split(r"[,;]", summary)
+                if item.strip()
+            }
+
+            def resolve_label(label: str, site: str) -> str:
+                return self._resolve_modification(label, site, reported)
+
         psm = PSM(
             peptidoform=self._parse_peptidoform(
-                psm_dict["Modified sequence"], int(psm_dict["Charge"])
+                psm_dict["Modified sequence"], int(psm_dict["Charge"]), resolve_label
             ),
             spectrum_id=psm_dict["Scan number"],
             run=psm_dict["Raw file"],
@@ -128,34 +195,113 @@ class MSMSReader(ReaderBase):
         )
         return psm
 
+    def _resolve_modification(self, label: str, site: str, reported: set[str]) -> str:
+        """Resolve a literal label using the site and optional row summary."""
+        if label in self._modification_overrides:
+            return self._modification_overrides[label]
+        if label in _NAMED_MODIFICATIONS:
+            return _NAMED_MODIFICATIONS[label]
+
+        code = "ox" if label == "Ox" else label
+        target = _SHORT_MODIFICATIONS.get((code, site))
+        if target is None and site.startswith("_"):
+            target = _SHORT_MODIFICATIONS.get((code, "_"))
+        if target is not None:
+            # Some exports use gl on lysine for a different modification.
+            if not reported and (code, site) != ("gl", "K"):
+                return target
+            for description in reported:
+                if _NAMED_MODIFICATIONS.get(description, description) != target:
+                    continue
+                # Check any explicit site on a recognized description.
+                _, _, specificity = description.removesuffix(")").rpartition(" (")
+                if specificity.isalpha() and specificity.isupper() and site not in specificity:
+                    continue
+                if specificity.endswith("N-term") and not site.startswith("_"):
+                    continue
+                return target
+
+        if label not in self._checked_labels:
+            self._checked_labels.add(label)
+            try:
+                tag = proforma.process_tag_tokens(label)
+                if isinstance(tag, proforma.GenericModification):
+                    try:
+                        proforma.UnimodModification.resolver(
+                            name=tag.value, strict=True, exhaustive=False
+                        )
+                    except KeyError:
+                        proforma.PSIModModification.resolver(name=tag.value)
+                elif isinstance(tag, proforma.UnimodModification):
+                    name, accession = tag.resolver.parse_identifier(tag.value)
+                    tag.resolver(name=name, id=accession, strict=True, exhaustive=False)
+            except (KeyError, ValueError, OSError, proforma.ProFormaError):
+                logger.warning(
+                    "Unmapped MaxQuant modification %r in %s. Keeping the original label; "
+                    "use modification_mapping to provide a ProForma tag.",
+                    label,
+                    self.filename,
+                )
+        return label
+
     @staticmethod
-    def _parse_peptidoform(modified_seq: str, charge: int) -> Peptidoform:
+    def _parse_peptidoform(
+        modified_seq: str,
+        charge: int,
+        resolve_label: Callable[[str, str], str] | None = None,
+    ) -> Peptidoform:
         """Parse modified sequence to Peptidoform."""
-        # pattern to match open and closed round brackets
-        pattern = re.compile(r"\(((?:[^)(]+|\((?:[^)(]+|\([^)(]*\))*\))*)\)")
         modified_seq = modified_seq.strip("_")
-        modified_seq_len = len(modified_seq)
+        if "(" not in modified_seq:
+            return Peptidoform(f"{modified_seq}/{charge}")
 
-        for match in pattern.finditer(modified_seq):
-            # take match object string, remove leading and trailing bracket
-            # and escape remaining brackets
-            se_mod_string = match[1].replace("(", r"\(").replace(")", r"\)")
+        # Split the unmodified spans and literal labels without interpreting nested
+        # parentheses or using label text as part of a regular expression.
+        segments: list[str] = []
+        labels: list[str] = []
+        depth = start = previous = 0
+        for index, char in enumerate(modified_seq):
+            if char == "(":
+                if depth == 0:
+                    start = index
+                    segments.append(modified_seq[previous:start])
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    labels.append(modified_seq[start + 1 : index])
+                    previous = index + 1
+                elif depth < 0:
+                    break
+        if depth:
+            raise MSMSParsingError(f"Unbalanced modification in {modified_seq!r}.")
+        segments.append(modified_seq[previous:])
 
-            # if N-term mod
-            if match.start() == 0:
-                modified_seq = re.sub(rf"\({se_mod_string}\)", rf"[{match[1]}]-", modified_seq)
-
-            # if C-term mod
-            elif match.end() == modified_seq_len:
-                modified_seq = re.sub(rf"\({se_mod_string}\)", rf"-[{match[1]}]", modified_seq)
-
-            # if modification on amino acid
+        site = "_" + next((segment[0] for segment in segments if segment), "")
+        last_segment = max((i for i, segment in enumerate(segments) if segment), default=0)
+        sequence, n_term, c_term = [], [], []
+        for index, (segment, label) in enumerate(zip(segments, labels)):
+            sequence.append(segment)
+            if segment:
+                site = segment[-1]
+            tag = f"[{resolve_label(label, site) if resolve_label is not None else label}]"
+            if site.startswith("_"):
+                n_term.append(tag)
+            elif index >= last_segment and (
+                label == "Amidated"
+                or label.endswith((" (C-term)", " (Peptide C-term)", " (Protein C-term)"))
+                or (resolve_label is None and index == len(labels) - 1)
+            ):
+                c_term.append(tag)
             else:
-                modified_seq = re.sub(rf"\({se_mod_string}\)", rf"[{match[1]}]", modified_seq)
+                sequence.append(tag)
 
-        modified_seq += f"/{charge}"
-
-        return Peptidoform(modified_seq)
+        if n_term:
+            sequence[:0] = [*n_term, "-"]
+        sequence.append(segments[-1])
+        if c_term:
+            sequence.extend(["-", *c_term])
+        return Peptidoform(f"{''.join(sequence)}/{charge}")
 
 
 class MSMSParsingError(PSMUtilsException):
